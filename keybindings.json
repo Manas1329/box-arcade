@@ -1,0 +1,8 @@
+{
+  "players": {
+    "1": {"up": "w", "down": "s", "left": "a", "right": "d"},
+    "2": {"up": "up", "down": "down", "left": "left", "right": "right"},
+    "3": {"up": "i", "down": "k", "left": "j", "right": "l"},
+    "4": {"up": "KP_8", "down": "KP_5", "left": "KP_4", "right": "KP_6"}
+  }
+}
