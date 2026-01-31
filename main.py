@@ -7,12 +7,13 @@ from __future__ import annotations
 import os
 import sys
 import json
-from typing import List
+from typing import List, Any
 import pygame
 
 from core.input_handler import InputHandler
 from entities.player import Player, HumanPlayer, BotPlayer
 from games.tag import TagGame
+from games.survival import SurvivalGame, SurvivalPvpGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -175,9 +176,9 @@ class GameSelectScene(BaseMenuScene):
     def __init__(self, app: "App"):
         mode = app.lobby.mode or "single"
         if mode == "single":
-            items = ["Solo Placeholder 1", "Solo Placeholder 2", "Back"]
+            items = ["Survival (Solo)", "Back"]
         else:
-            items = ["Tag (Boxes)", "Back"]
+            items = ["Tag (Boxes)", "Survival (PvP)", "Back"]
         super().__init__(app, "Game Select", items)
 
     def handle_select(self, index: int):
@@ -189,9 +190,12 @@ class GameSelectScene(BaseMenuScene):
         if mode == "pvp" and label.startswith("Tag"):
             self.app.lobby.game = "tag"
             self.app.scene_manager.set(PlayerSetupScene(self.app))
-        else:
-            # Singleplayer placeholders: no game yet, return Home
-            self.app.scene_manager.set(HomeScene(self.app))
+        elif mode == "single" and label.startswith("Survival"):
+            self.app.lobby.game = "survival"
+            self.app.launch_survival_game()
+        elif mode == "pvp" and label.startswith("Survival"):
+            self.app.lobby.game = "survival_pvp"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
 
 
 class ControlsScene(BaseMenuScene):
@@ -250,6 +254,8 @@ class PlayerSetupScene(BaseMenuScene):
         if label == "Start Game":
             if self.app.lobby.game == "tag":
                 self.app.launch_tag_game(self.app.lobby.num_players)
+            elif self.app.lobby.game == "survival_pvp":
+                self.app.launch_survival_pvp_game(self.app.lobby.num_players)
         elif label == "Back":
             self.app.scene_manager.set(GameSelectScene(self.app))
 
@@ -380,7 +386,7 @@ class MenuScene(Scene):
 
 
 class GameScene(Scene):
-    def __init__(self, app: "App", game: TagGame):
+    def __init__(self, app: "App", game: Any):
         self.app = app
         self.game = game
         self.font = app.font
@@ -407,14 +413,27 @@ class GameScene(Scene):
 
 
 class ResultsScene(Scene):
-    def __init__(self, app: "App", game: TagGame):
+    def __init__(self, app: "App", game: Any):
         self.app = app
         self.game = game
         self.font = app.font
         self.big_font = app.big_font
         self.items = ["Play Again", "Main Menu"]
         self.selected = 0
-        self.sorted_scores = sorted(game.scores(), key=lambda x: x[1])
+        # Sort based on mode: survival wants highest time first
+        reverse = getattr(game, "higher_time_wins", False)
+        self.sorted_scores = sorted(game.scores(), key=lambda x: x[1], reverse=reverse)
+        # Map player name -> color for swatches on the results screen
+        self.name_colors: dict[str, tuple[int, int, int]] = {}
+        if hasattr(game, "players"):
+            try:
+                for p in game.players:
+                    self.name_colors[p.name] = getattr(p, "color", (200, 200, 200))
+            except Exception:
+                pass
+        elif hasattr(game, "player"):
+            p = game.player
+            self.name_colors[p.name] = getattr(p, "color", (200, 200, 200))
 
     def handle_event(self, event: pygame.event.Event):
         if event.type == pygame.KEYDOWN:
@@ -442,13 +461,43 @@ class ResultsScene(Scene):
 
         if self.sorted_scores:
             winner, t = self.sorted_scores[0]
-            wtext = self.font.render(f"Winner: {winner} (IT: {t:.1f}s)", True, (240, 240, 240))
-            surface.blit(wtext, (WIDTH//2 - wtext.get_width()//2, 140))
+            is_survival = getattr(self.game, "higher_time_wins", False)
+            if is_survival:
+                wtext = self.font.render(f"Winner: {winner}", True, (240, 240, 240))
+            else:
+                wtext = self.font.render(f"Winner: {winner} (IT: {t:.1f}s)", True, (240, 240, 240))
+            # Draw color swatch next to winner
+            win_color = self.name_colors.get(winner)
+            x_text = WIDTH//2 - wtext.get_width()//2
+            y_text = 140
+            if win_color:
+                box_size = 14
+                box_x = x_text - box_size - 8
+                box_y = y_text + (wtext.get_height() - box_size)//2
+                box = pygame.Rect(box_x, box_y, box_size, box_size)
+                pygame.draw.rect(surface, win_color, box)
+                pygame.draw.rect(surface, (230, 230, 230), box, 2)
+            surface.blit(wtext, (x_text, y_text))
 
+        is_survival = getattr(self.game, "higher_time_wins", False)
         for i, (name, it_time) in enumerate(self.sorted_scores):
-            line = f"{i+1}. {name} — IT: {it_time:.1f}s"
+            if is_survival:
+                line = f"{i+1}. {name}"
+            else:
+                line = f"{i+1}. {name} — IT: {it_time:.1f}s"
             surf = self.font.render(line, True, (220, 220, 220))
-            surface.blit(surf, (WIDTH//2 - surf.get_width()//2, 180 + i * 26))
+            # Draw color swatch next to each entry
+            color = self.name_colors.get(name)
+            line_x = WIDTH//2 - surf.get_width()//2
+            line_y = 180 + i * 26
+            if color:
+                box_size = 12
+                box_x = line_x - box_size - 8
+                box_y = line_y + (surf.get_height() - box_size)//2
+                box = pygame.Rect(box_x, box_y, box_size, box_size)
+                pygame.draw.rect(surface, color, box)
+                pygame.draw.rect(surface, (220, 220, 220), box, 2)
+            surface.blit(surf, (line_x, line_y))
 
         box_w = 300
         box_h = 44
@@ -529,6 +578,41 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = lambda: self.launch_tag_game(num_players)
+        self.scene_manager.set(scene)
+
+    def launch_survival_game(self):
+        # Single player in arena; reuse existing movement and input systems
+        bounds = pygame.Rect(20, 60, WIDTH - 40, HEIGHT - 80)
+        size = 36
+        speed = 220.0
+        # Center spawn
+        rect = pygame.Rect(0, 0, size, size)
+        rect.center = bounds.center
+        color = PLAYER_COLORS[0]
+        player = HumanPlayer(1, "Solo", rect, color, speed, True)
+
+        game = SurvivalGame(player, bounds)
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_survival_game
+        self.scene_manager.set(scene)
+
+    def launch_survival_pvp_game(self, num_players: int):
+        bounds = pygame.Rect(20, 60, WIDTH - 40, HEIGHT - 80)
+        size = 36
+        speed = 220.0
+        players: List[HumanPlayer] = []
+        # Spawn colors & IDs
+        for i in range(num_players):
+            rect = pygame.Rect(0, 0, size, size)
+            color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+            players.append(HumanPlayer(i + 1, f"P{i+1}", rect, color, speed, True))
+        game = SurvivalPvpGame(players, bounds)
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = lambda: self.launch_survival_pvp_game(num_players)
         self.scene_manager.set(scene)
 
     def run(self):
