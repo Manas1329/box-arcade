@@ -15,6 +15,7 @@ from entities.player import Player, HumanPlayer, BotPlayer
 from games.tag import TagGame
 from games.survival import SurvivalGame, SurvivalPvpGame
 from games.control_zone import ControlZoneGame
+from games.trail_lock import TrailLockGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -179,7 +180,7 @@ class GameSelectScene(BaseMenuScene):
         if mode == "single":
             items = ["Survival (Solo)", "Back"]
         else:
-            items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "Back"]
+            items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Back"]
         super().__init__(app, "Game Select", items)
 
     def handle_select(self, index: int):
@@ -199,6 +200,9 @@ class GameSelectScene(BaseMenuScene):
             self.app.scene_manager.set(PlayerSetupScene(self.app))
         elif mode == "pvp" and label.startswith("Control Zone"):
             self.app.lobby.game = "control_zone"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+        elif mode == "pvp" and label.startswith("TrailLock"):
+            self.app.lobby.game = "trail_lock"
             self.app.scene_manager.set(PlayerSetupScene(self.app))
 
 
@@ -262,6 +266,8 @@ class PlayerSetupScene(BaseMenuScene):
                 self.app.launch_survival_pvp_game(self.app.lobby.num_players)
             elif self.app.lobby.game == "control_zone":
                 self.app.launch_control_zone_game(self.app.lobby.num_players)
+            elif self.app.lobby.game == "trail_lock":
+                self.app.launch_trail_lock_game(self.app.lobby.num_players)
         elif label == "Back":
             self.app.scene_manager.set(GameSelectScene(self.app))
 
@@ -468,9 +474,12 @@ class ResultsScene(Scene):
         if self.sorted_scores:
             winner, t = self.sorted_scores[0]
             show_values = (not getattr(self.game, "higher_time_wins", False)) or getattr(self.game, "show_time_in_results", False)
+            label = getattr(self.game, "result_label", "IT")
+            # Only add 's' unit for time-based labels
+            is_time_label = label.lower() in ("it", "time")
             if show_values:
-                label = getattr(self.game, "result_label", "IT")
-                wtext = self.font.render(f"Winner: {winner} ({label}: {t:.1f}s)", True, (240, 240, 240))
+                val_text = f"{t:.1f}s" if is_time_label else f"{int(t)}"
+                wtext = self.font.render(f"Winner: {winner} ({label}: {val_text})", True, (240, 240, 240))
             else:
                 wtext = self.font.render(f"Winner: {winner}", True, (240, 240, 240))
             # Draw color swatch next to winner
@@ -490,7 +499,9 @@ class ResultsScene(Scene):
         for i, (name, it_time) in enumerate(self.sorted_scores):
             if show_values:
                 label = getattr(self.game, "result_label", "IT")
-                line = f"{i+1}. {name} — {label}: {it_time:.1f}s"
+                is_time_label = label.lower() in ("it", "time")
+                val_text = f"{it_time:.1f}s" if is_time_label else f"{int(it_time)}"
+                line = f"{i+1}. {name} — {label}: {val_text}"
             else:
                 line = f"{i+1}. {name}"
             surf = self.font.render(line, True, (220, 220, 220))
@@ -637,6 +648,21 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = lambda: self.launch_control_zone_game(num_players)
+        self.scene_manager.set(scene)
+
+    def launch_trail_lock_game(self, num_players: int):
+        bounds = pygame.Rect(20, 60, WIDTH - 40, HEIGHT - 80)
+        size = 28
+        speed = 170.0
+        players: List[HumanPlayer] = []
+        for i in range(num_players):
+            rect = pygame.Rect(0, 0, size, size)
+            color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+            players.append(HumanPlayer(i + 1, f"P{i+1}", rect, color, speed, True))
+        game = TrailLockGame(players, bounds, target_score=5)
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = lambda: self.launch_trail_lock_game(num_players)
         self.scene_manager.set(scene)
 
     def run(self):
