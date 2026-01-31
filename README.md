@@ -23,9 +23,19 @@ Start the game:
 python main.py
 ```
 
+## Menu & Lobby System
+- Keyboard-only, rectangular box-based UI (no sprites/images).
+- Scene architecture:
+	- Home: entry point with Start, Mode Select, Game Select, Quit.
+	- Mode Select: choose `PvP (Local)` or `Singleplayer`.
+	- Game Select: choose a game (e.g., `Tag (Boxes)`).
+- Selected option is highlighted; use Up/Down to navigate, Enter to select, Esc to go back.
+- Selections are stored in a simple `LobbyState` for launching games later.
+
 ## Key Bindings
-Editable in `keybindings.json`. Use readable names: `w`, `left`, `up`, `i`, `j`, `k`, `l`, `KP_8`, `KP_4`, `KP_5`, `KP_6`.
-Bindings are loaded at runtime and converted to pygame key codes; values are not hardcoded in code.
+Editable in `keybindings.json`. Use symbolic names (preferred): `K_W`, `K_A`, `K_S`, `K_D`, `K_LEFT`, `K_RIGHT`, `K_UP`, `K_DOWN`, `K_KP8`, `K_KP4`, `K_KP5`, `K_KP6`.
+Synonyms accepted and normalized: `w`/`A` → `K_a`, `left`/`ArrowLeft` → `K_LEFT`, `NUMPAD8`/`KP_8`/`K_KP8` → `K_KP8`.
+Bindings are loaded at runtime and converted to pygame key constants; values are not hardcoded in code.
 
 ## Game: TAG
 - One player starts as **IT**.

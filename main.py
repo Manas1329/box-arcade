@@ -50,6 +50,243 @@ class SceneManager:
         self.current = scene
 
 
+class LobbyState:
+    def __init__(self):
+        self.mode: str | None = None  # 'pvp' or 'single'
+        self.game: str | None = None  # e.g., 'tag'
+        self.num_players: int = 2     # PvP setup (2–4)
+
+
+class BaseMenuScene(Scene):
+    """Reusable rectangular box-based menu scene.
+
+    Keyboard-only navigation with Up/Down, Enter for select, Esc for back.
+    Draws centered boxes for items and highlights the selected one.
+    """
+
+    def __init__(self, app: "App", title: str, items: list[str]):
+        self.app = app
+        self.title = title
+        self.items = items
+        self.selected = 0
+        self.font = app.font
+        self.big_font = app.big_font
+
+        # Box layout
+        self.box_w = 420
+        self.box_h = 44
+        self.box_gap = 14
+        self.box_color = (70, 70, 90)
+        self.box_highlight = (120, 120, 180)
+        self.box_outline = (180, 180, 220)
+
+    def handle_event(self, event: pygame.event.Event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_UP:
+                self.selected = (self.selected - 1) % len(self.items)
+            elif event.key == pygame.K_DOWN:
+                self.selected = (self.selected + 1) % len(self.items)
+            elif event.key == pygame.K_RETURN:
+                self.handle_select(self.selected)
+            elif event.key == pygame.K_ESCAPE:
+                self.handle_back()
+
+    def handle_select(self, index: int):
+        pass
+
+    def handle_back(self):
+        # Default: go to Home
+        self.app.scene_manager.set(HomeScene(self.app))
+
+    def update(self, dt: float):
+        pass
+
+    def _menu_rects(self) -> list[pygame.Rect]:
+        total_h = len(self.items) * self.box_h + (len(self.items) - 1) * self.box_gap
+        start_y = (HEIGHT // 2) - (total_h // 2)
+        rects = []
+        for i in range(len(self.items)):
+            x = WIDTH // 2 - self.box_w // 2
+            y = start_y + i * (self.box_h + self.box_gap)
+            rects.append(pygame.Rect(x, y, self.box_w, self.box_h))
+        return rects
+
+    def draw(self, surface: pygame.Surface):
+        surface.fill(BG_COLOR)
+        # Title
+        title = self.big_font.render(self.title, True, (255, 255, 255))
+        surface.blit(title, (WIDTH//2 - title.get_width()//2, 90))
+
+        rects = self._menu_rects()
+        for i, rect in enumerate(rects):
+            is_sel = (i == self.selected)
+            fill = self.box_highlight if is_sel else self.box_color
+            pygame.draw.rect(surface, fill, rect)
+            pygame.draw.rect(surface, self.box_outline, rect, 2)
+
+            label = self.items[i]
+            surf = self.font.render(label, True, (240, 240, 240))
+            surface.blit(surf, (rect.centerx - surf.get_width()//2, rect.centery - surf.get_height()//2))
+
+        hint = self.font.render("Up/Down: Navigate  Enter: Select  Esc: Back", True, (180, 180, 180))
+        surface.blit(hint, (WIDTH//2 - hint.get_width()//2, HEIGHT - 60))
+
+
+class HomeScene(BaseMenuScene):
+    def __init__(self, app: "App"):
+        items = ["Play", "Controls", "Quit"]
+        super().__init__(app, "BOX ARCADE", items)
+
+    def draw(self, surface: pygame.Surface):
+        super().draw(surface)
+        # Show current selections
+        mode = self.app.lobby.mode or "(none)"
+        game = self.app.lobby.game or "(none)"
+        status = self.font.render(f"Mode: {mode}   Game: {game}", True, (200, 200, 200))
+        surface.blit(status, (WIDTH//2 - status.get_width()//2, 150))
+
+    def handle_select(self, index: int):
+        if self.items[index] == "Play":
+            self.app.scene_manager.set(ModeSelectScene(self.app))
+        elif self.items[index] == "Controls":
+            self.app.scene_manager.set(ControlsScene(self.app))
+        elif self.items[index] == "Quit":
+            pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+    def handle_back(self):
+        pygame.event.post(pygame.event.Event(pygame.QUIT))
+
+
+class ModeSelectScene(BaseMenuScene):
+    def __init__(self, app: "App"):
+        items = ["Single Player", "PvP (Local)"]
+        super().__init__(app, "Mode Select", items)
+
+    def handle_select(self, index: int):
+        label = self.items[index]
+        if label.startswith("Single"):
+            self.app.lobby.mode = "single"
+        elif label.startswith("PvP"):
+            self.app.lobby.mode = "pvp"
+        self.app.scene_manager.set(GameSelectScene(self.app))
+
+
+class GameSelectScene(BaseMenuScene):
+    def __init__(self, app: "App"):
+        mode = app.lobby.mode or "single"
+        if mode == "single":
+            items = ["Solo Placeholder 1", "Solo Placeholder 2", "Back"]
+        else:
+            items = ["Tag (Boxes)", "Back"]
+        super().__init__(app, "Game Select", items)
+
+    def handle_select(self, index: int):
+        label = self.items[index]
+        mode = self.app.lobby.mode or "single"
+        if label == "Back":
+            self.app.scene_manager.set(ModeSelectScene(self.app))
+            return
+        if mode == "pvp" and label.startswith("Tag"):
+            self.app.lobby.game = "tag"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+        else:
+            # Singleplayer placeholders: no game yet, return Home
+            self.app.scene_manager.set(HomeScene(self.app))
+
+
+class ControlsScene(BaseMenuScene):
+    def __init__(self, app: "App"):
+        items = ["Back"]
+        super().__init__(app, "Controls", items)
+        cfg_path = os.path.join(os.path.dirname(__file__), "keybindings.json")
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                self.cfg = json.load(f)
+        except Exception:
+            self.cfg = {"players": {}}
+
+    def handle_select(self, index: int):
+        self.app.scene_manager.set(HomeScene(self.app))
+
+    def draw(self, surface: pygame.Surface):
+        super().draw(surface)
+        players = self.cfg.get("players", {})
+        start_y = 160
+        box_w = 560
+        box_h = 70
+        gap = 12
+        for i, pid in enumerate(sorted(players.keys(), key=lambda x: int(x))):
+            rect = pygame.Rect(WIDTH//2 - box_w//2, start_y + i*(box_h+gap), box_w, box_h)
+            pygame.draw.rect(surface, (60, 60, 80), rect)
+            pygame.draw.rect(surface, (150, 150, 190), rect, 2)
+            color = PLAYER_COLORS[(int(pid)-1) % len(PLAYER_COLORS)]
+            swatch = pygame.Rect(rect.left+10, rect.top+10, 40, 40)
+            pygame.draw.rect(surface, color, swatch)
+            actions = players[pid]
+            text = f"P{pid}: up={actions.get('up','')} down={actions.get('down','')} left={actions.get('left','')} right={actions.get('right','')}"
+            surf = self.font.render(text, True, (220, 220, 230))
+            surface.blit(surf, (swatch.right + 12, rect.centery - surf.get_height()//2))
+
+
+class PlayerSetupScene(BaseMenuScene):
+    def __init__(self, app: "App"):
+        items = ["Start Game", "Back"]
+        super().__init__(app, "Player Setup (PvP)", items)
+        self.min_players = 2
+        self.max_players = 4
+        if not hasattr(self.app.lobby, "num_players"):
+            self.app.lobby.num_players = self.min_players
+
+    def handle_event(self, event: pygame.event.Event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_LEFT:
+                self.app.lobby.num_players = max(self.min_players, self.app.lobby.num_players - 1)
+            elif event.key == pygame.K_RIGHT:
+                self.app.lobby.num_players = min(self.max_players, self.app.lobby.num_players + 1)
+        super().handle_event(event)
+
+    def handle_select(self, index: int):
+        label = self.items[index]
+        if label == "Start Game":
+            if self.app.lobby.game == "tag":
+                self.app.launch_tag_game(self.app.lobby.num_players)
+        elif label == "Back":
+            self.app.scene_manager.set(GameSelectScene(self.app))
+
+    def draw(self, surface: pygame.Surface):
+        super().draw(surface)
+        counter_rect = pygame.Rect(WIDTH//2 - 140, 150, 280, 50)
+        pygame.draw.rect(surface, (60, 60, 80), counter_rect)
+        pygame.draw.rect(surface, (150, 150, 190), counter_rect, 2)
+        text = self.font.render(f"Players: {self.app.lobby.num_players}  (Left/Right)", True, (220, 220, 230))
+        surface.blit(text, (counter_rect.centerx - text.get_width()//2, counter_rect.centery - text.get_height()//2))
+
+        cfg_path = os.path.join(os.path.dirname(__file__), "keybindings.json")
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {"players": {}}
+        players_map = cfg.get("players", {})
+
+        start_y = 220
+        box_w = 600
+        box_h = 64
+        gap = 10
+        for i in range(self.app.lobby.num_players):
+            pid = str(i+1)
+            rect = pygame.Rect(WIDTH//2 - box_w//2, start_y + i*(box_h+gap), box_w, box_h)
+            pygame.draw.rect(surface, (60, 60, 80), rect)
+            pygame.draw.rect(surface, (150, 150, 190), rect, 2)
+            color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+            swatch = pygame.Rect(rect.left+10, rect.top+12, 40, 40)
+            pygame.draw.rect(surface, color, swatch)
+            actions = players_map.get(pid, {})
+            text = f"P{pid}: up={actions.get('up','')} down={actions.get('down','')} left={actions.get('left','')} right={actions.get('right','')}"
+            surf = self.font.render(text, True, (220, 220, 230))
+            surface.blit(surf, (swatch.right + 12, rect.centery - surf.get_height()//2))
+
+
 class MenuScene(Scene):
     def __init__(self, app: "App"):
         self.app = app
@@ -99,7 +336,7 @@ class MenuScene(Scene):
 
         info = [
             "Per-player key bindings are in keybindings.json.",
-            "Edit readable names (e.g., 'w', 'left', 'KP_8').",
+            "Use symbolic names (e.g., 'K_W', 'K_LEFT', 'K_KP8').",
         ]
         for i, text in enumerate(info):
             surf = self.font.render(text, True, (180, 180, 180))
@@ -151,8 +388,8 @@ class GameScene(Scene):
     def handle_event(self, event: pygame.event.Event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                # Return to menu
-                self.app.scene_manager.set(MenuScene(self.app))
+                # Open pause menu
+                self.app.scene_manager.set(PauseScene(self.app))
 
     def update(self, dt: float):
         pressed = pygame.key.get_pressed()
@@ -173,15 +410,25 @@ class ResultsScene(Scene):
         self.game = game
         self.font = app.font
         self.big_font = app.big_font
-        self.sorted_scores = sorted(game.scores(), key=lambda x: x[1])  # least IT time first
+        self.items = ["Play Again", "Main Menu"]
+        self.selected = 0
+        self.sorted_scores = sorted(game.scores(), key=lambda x: x[1])
 
     def handle_event(self, event: pygame.event.Event):
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_RETURN:
-                # Back to menu
-                self.app.scene_manager.set(MenuScene(self.app))
+            if event.key == pygame.K_UP:
+                self.selected = (self.selected - 1) % len(self.items)
+            elif event.key == pygame.K_DOWN:
+                self.selected = (self.selected + 1) % len(self.items)
+            elif event.key == pygame.K_RETURN:
+                label = self.items[self.selected]
+                if label == "Play Again":
+                    if hasattr(self.app, "current_game_launcher") and self.app.current_game_launcher:
+                        self.app.current_game_launcher()
+                elif label == "Main Menu":
+                    self.app.scene_manager.set(HomeScene(self.app))
             elif event.key == pygame.K_ESCAPE:
-                pygame.event.post(pygame.event.Event(pygame.QUIT))
+                self.app.scene_manager.set(HomeScene(self.app))
 
     def update(self, dt: float):
         pass
@@ -191,13 +438,49 @@ class ResultsScene(Scene):
         title = self.big_font.render("Results", True, (255, 255, 255))
         surface.blit(title, (WIDTH//2 - title.get_width()//2, 80))
 
+        if self.sorted_scores:
+            winner, t = self.sorted_scores[0]
+            wtext = self.font.render(f"Winner: {winner} (IT: {t:.1f}s)", True, (240, 240, 240))
+            surface.blit(wtext, (WIDTH//2 - wtext.get_width()//2, 140))
+
         for i, (name, it_time) in enumerate(self.sorted_scores):
             line = f"{i+1}. {name} — IT: {it_time:.1f}s"
             surf = self.font.render(line, True, (220, 220, 220))
-            surface.blit(surf, (WIDTH//2 - surf.get_width()//2, 180 + i * 28))
+            surface.blit(surf, (WIDTH//2 - surf.get_width()//2, 180 + i * 26))
 
-        hint = self.font.render("Enter: Menu   Esc: Quit", True, (180, 180, 180))
-        surface.blit(hint, (WIDTH//2 - hint.get_width()//2, HEIGHT - 120))
+        box_w = 300
+        box_h = 44
+        gap = 14
+        start_y = HEIGHT - 160
+        for i, label in enumerate(self.items):
+            rect = pygame.Rect(WIDTH//2 - box_w//2, start_y + i*(box_h+gap), box_w, box_h)
+            fill = (120, 120, 180) if i == self.selected else (70, 70, 90)
+            pygame.draw.rect(surface, fill, rect)
+            pygame.draw.rect(surface, (180, 180, 220), rect, 2)
+            surf = self.font.render(label, True, (240, 240, 240))
+            surface.blit(surf, (rect.centerx - surf.get_width()//2, rect.centery - surf.get_height()//2))
+
+
+class PauseScene(BaseMenuScene):
+    def __init__(self, app: "App"):
+        items = ["Resume", "Restart", "Quit to Menu"]
+        super().__init__(app, "Paused", items)
+
+    def handle_select(self, index: int):
+        label = self.items[index]
+        if label == "Resume":
+            # Resume by returning to the current game scene
+            # The existing game continues running when we switch back.
+            # Simply set the scene to the existing GameScene stored in app.
+            if hasattr(self.app, "_active_game_scene") and self.app._active_game_scene:
+                self.app.scene_manager.set(self.app._active_game_scene)
+            else:
+                self.app.scene_manager.set(HomeScene(self.app))
+        elif label == "Restart":
+            if hasattr(self.app, "current_game_launcher") and self.app.current_game_launcher:
+                self.app.current_game_launcher()
+        elif label == "Quit to Menu":
+            self.app.scene_manager.set(HomeScene(self.app))
 
 
 class App:
@@ -213,7 +496,38 @@ class App:
         cfg_path = os.path.join(os.path.dirname(__file__), "keybindings.json")
         self.input_handler = InputHandler.from_file(cfg_path)
 
-        self.scene_manager = SceneManager(MenuScene(self))
+        self.lobby = LobbyState()
+        self.current_game_launcher = None
+        self._active_game_scene = None
+        # Start at Home scene for lobby/system navigation
+        self.scene_manager = SceneManager(HomeScene(self))
+
+    def launch_tag_game(self, num_players: int):
+        bounds = pygame.Rect(20, 60, WIDTH - 40, HEIGHT - 80)
+        spawn_positions = [
+            (bounds.left + 40, bounds.top + 40),
+            (bounds.right - 80, bounds.top + 40),
+            (bounds.left + 40, bounds.bottom - 80),
+            (bounds.right - 80, bounds.bottom - 80),
+            (bounds.centerx - 40, bounds.centery - 40),
+            (bounds.centerx + 40, bounds.centery - 40),
+            (bounds.centerx - 40, bounds.centery + 40),
+            (bounds.centerx + 40, bounds.centery + 40),
+        ]
+        players: List[Player] = []
+        speed = 220.0
+        size = 36
+        for i in range(num_players):
+            x, y = spawn_positions[i % len(spawn_positions)]
+            rect = pygame.Rect(x, y, size, size)
+            color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
+            players.append(HumanPlayer(i + 1, f"P{i+1}", rect, color, speed, True))
+
+        game = TagGame(players, bounds, match_time=60)
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = lambda: self.launch_tag_game(num_players)
+        self.scene_manager.set(scene)
 
     def run(self):
         while True:

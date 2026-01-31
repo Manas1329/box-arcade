@@ -1,12 +1,75 @@
 """
 Input system for configurable, per-player key bindings.
-Loads key mappings from JSON and converts key names to pygame key codes.
+Loads key mappings from JSON using symbolic key names (not characters).
+Supports letters, arrows, and numpad keys with consistent behavior.
 """
 from __future__ import annotations
 import json
 import os
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 import pygame
+
+
+def _normalize_key_name(name: str) -> Optional[str]:
+    """Normalize a human-readable key name to a pygame constant name.
+
+    Accepted examples (case-insensitive):
+    - Letters: "A", "K_A", "a" → pygame.K_a
+    - Arrows: "LEFT", "K_LEFT", "ArrowLeft" → pygame.K_LEFT
+    - Numpad: "KP_8", "K_KP8", "NUMPAD8", "KP8" → pygame.K_KP8
+
+    Returns the pygame attribute name (e.g., "K_a", "K_LEFT", "K_KP8"),
+    or None if not recognized.
+    """
+    if not name:
+        return None
+    s = name.strip()
+    s_upper = s.upper()
+
+    # Arrow synonyms
+    arrow_map = {
+        "LEFT": "K_LEFT",
+        "ARROWLEFT": "K_LEFT",
+        "RIGHT": "K_RIGHT",
+        "ARROWRIGHT": "K_RIGHT",
+        "UP": "K_UP",
+        "ARROWUP": "K_UP",
+        "DOWN": "K_DOWN",
+        "ARROWDOWN": "K_DOWN",
+    }
+    if s_upper in arrow_map:
+        return arrow_map[s_upper]
+
+    # Numpad synonyms: KP_0..KP_9 and common variants
+    if s_upper.startswith("NUMPAD"):
+        digit = s_upper.replace("NUMPAD", "")
+        if digit.isdigit():
+            return f"K_KP{digit}"
+    if s_upper.startswith("KP_"):
+        tail = s_upper[3:]
+        if tail.isdigit():
+            return f"K_KP{tail}"
+    if s_upper.startswith("K_KP"):
+        tail = s_upper[4:]
+        if tail.isdigit():
+            return f"K_KP{tail}"
+    # Compact form like "KP8"
+    if s_upper.startswith("KP") and s_upper[2:].isdigit():
+        return f"K_KP{s_upper[2:]}"
+
+    # Pygame-style explicit names
+    if s_upper.startswith("K_"):
+        # Special-case letters: pygame uses lowercase (K_a)
+        if len(s_upper) == 3 and s_upper[2].isalpha():
+            return f"K_{s_upper[2].lower()}"
+        return s_upper
+
+    # Single letter (symbolic), prefer constants not ASCII checks
+    if len(s_upper) == 1 and s_upper.isalpha():
+        return f"K_{s_upper.lower()}"
+
+    # As a final fallback, attempt pygame.key.key_code downstream
+    return None
 
 
 class InputHandler:
@@ -16,12 +79,12 @@ class InputHandler:
     pygame key codes via `pygame.key.key_code` at runtime. This keeps
     the system configurable without hardcoding values in code.
 
-    Example JSON structure:
+        Example JSON structure (symbolic names preferred):
     {
-      "players": {
-        "1": {"up": "w", "down": "s", "left": "a", "right": "d"},
-        "2": {"up": "up", "down": "down", "left": "left", "right": "right"}
-      }
+            "players": {
+                "1": {"up": "K_W", "down": "K_S", "left": "K_A", "right": "K_D"},
+                "2": {"up": "K_UP", "down": "K_DOWN", "left": "K_LEFT", "right": "K_RIGHT"}
+            }
     }
     """
 
@@ -31,16 +94,28 @@ class InputHandler:
 
     @staticmethod
     def _convert_names_to_codes(name_map: Dict[str, str]) -> Dict[str, int]:
-        """Convert action->keyname map to action->keycode using pygame's key_code.
-        Accepts names like "w", "left", "KP_8" etc.
+        """Convert action->keyname map to action->pygame key code.
+
+        - Uses symbolic names (e.g., "K_LEFT", "K_a", "K_KP8") via pygame constants.
+        - Accepts readable synonyms and normalizes them.
+        - Avoids ASCII/character-based checks in application logic.
         """
         out: Dict[str, int] = {}
         for action, key_name in name_map.items():
-            try:
-                out[action] = pygame.key.key_code(key_name)
-            except Exception:
-                # Fallback: if unknown name, leave unmapped
-                out[action] = -1
+            code = -1
+            attr_name = _normalize_key_name(key_name)
+            if attr_name:
+                try:
+                    code = getattr(pygame, attr_name)
+                except Exception:
+                    code = -1
+            else:
+                # Compatibility: attempt pygame's key_code for unknowns
+                try:
+                    code = pygame.key.key_code(key_name)
+                except Exception:
+                    code = -1
+            out[action] = code
         return out
 
     @classmethod
@@ -73,12 +148,39 @@ class InputHandler:
         """
         return {
             "players": {
-                "1": {"up": "w", "down": "s", "left": "a", "right": "d"},
-                "2": {"up": "up", "down": "down", "left": "left", "right": "right"},
-                "3": {"up": "i", "down": "k", "left": "j", "right": "l"},
-                "4": {"up": "KP_8", "down": "KP_5", "left": "KP_4", "right": "KP_6"}
+                "1": {"up": "K_W", "down": "K_S", "left": "K_A", "right": "K_D"},
+                "2": {"up": "K_UP", "down": "K_DOWN", "left": "K_LEFT", "right": "K_RIGHT"},
+                "3": {"up": "K_I", "down": "K_K", "left": "K_J", "right": "K_L"},
+                "4": {"up": "K_KP8", "down": "K_KP5", "left": "K_KP4", "right": "K_KP6"}
             }
         }
+
+    def is_action_pressed(self, player_id: int, action: str, pressed: Tuple[bool, ...]) -> bool:
+        mapping = self._mappings.get(player_id, {})
+        key = mapping.get(action, -1)
+        return (key != -1 and key < len(pressed) and pressed[key])
+
+    def get_axes(self, player_id: int, pressed: Tuple[bool, ...]) -> Tuple[int, int]:
+        """Return discrete axes (-1,0,1) for x,y.
+        Useful when you don't want normalized diagonals.
+        """
+        mapping = self._mappings.get(player_id, {})
+        up = mapping.get("up", -1)
+        down = mapping.get("down", -1)
+        left = mapping.get("left", -1)
+        right = mapping.get("right", -1)
+
+        dx = 0
+        dy = 0
+        if left != -1 and left < len(pressed) and pressed[left]:
+            dx -= 1
+        if right != -1 and right < len(pressed) and pressed[right]:
+            dx += 1
+        if up != -1 and up < len(pressed) and pressed[up]:
+            dy -= 1
+        if down != -1 and down < len(pressed) and pressed[down]:
+            dy += 1
+        return (dx, dy)
 
     def get_direction(self, player_id: int, pressed: Tuple[bool, ...]) -> Tuple[float, float]:
         """Return movement direction (dx, dy) for a player based on pressed keys.
