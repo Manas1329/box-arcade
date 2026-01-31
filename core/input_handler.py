@@ -6,7 +6,7 @@ Supports letters, arrows, and numpad keys with consistent behavior.
 from __future__ import annotations
 import json
 import os
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, Set
 import pygame
 
 
@@ -91,14 +91,23 @@ class InputHandler:
     def __init__(self, mappings: Dict[int, Dict[str, int]]):
         # mappings: {player_id: {action: key_code}}
         self._mappings = mappings
+        # Internal pressed set using unified pygame keycodes (event.key)
+        self._pressed_keys: Set[int] = set()
+
+    def handle_event(self, event: pygame.event.Event):
+        """Track pressed keys from KEYDOWN/KEYUP events using pygame keycodes."""
+        if event.type == pygame.KEYDOWN:
+            self._pressed_keys.add(event.key)
+        elif event.type == pygame.KEYUP:
+            self._pressed_keys.discard(event.key)
 
     @staticmethod
     def _convert_names_to_codes(name_map: Dict[str, str]) -> Dict[str, int]:
-        """Convert action->keyname map to action->pygame key code.
+        """Convert action->keyname map to action->pygame keycode (K_*).
 
-        - Uses symbolic names (e.g., "K_LEFT", "K_a", "K_KP8") via pygame constants.
-        - Accepts readable synonyms and normalizes them.
-        - Avoids ASCII/character-based checks in application logic.
+        - Normalizes symbolic names (e.g., "K_LEFT", "K_a", "K_KP8").
+        - Uses pygame keycodes so menu events and gameplay share identifiers.
+        - Avoids character/ASCII/ord-based logic entirely.
         """
         out: Dict[str, int] = {}
         for action, key_name in name_map.items():
@@ -110,9 +119,8 @@ class InputHandler:
                 except Exception:
                     code = -1
             else:
-                # Compatibility: attempt pygame's key_code for unknowns
                 try:
-                    code = pygame.key.key_code(key_name)
+                    code = pygame.key.key_code(str(key_name))
                 except Exception:
                     code = -1
             out[action] = code
@@ -155,12 +163,14 @@ class InputHandler:
             }
         }
 
-    def is_action_pressed(self, player_id: int, action: str, pressed: Tuple[bool, ...]) -> bool:
+    def is_action_pressed(self, player_id: int, action: str, pressed: Optional[Tuple[bool, ...]]) -> bool:
         mapping = self._mappings.get(player_id, {})
         key = mapping.get(action, -1)
+        if pressed is None:
+            return (key != -1 and key in self._pressed_keys)
         return (key != -1 and key < len(pressed) and pressed[key])
 
-    def get_axes(self, player_id: int, pressed: Tuple[bool, ...]) -> Tuple[int, int]:
+    def get_axes(self, player_id: int, pressed: Optional[Tuple[bool, ...]]) -> Tuple[int, int]:
         """Return discrete axes (-1,0,1) for x,y.
         Useful when you don't want normalized diagonals.
         """
@@ -172,17 +182,27 @@ class InputHandler:
 
         dx = 0
         dy = 0
-        if left != -1 and left < len(pressed) and pressed[left]:
-            dx -= 1
-        if right != -1 and right < len(pressed) and pressed[right]:
-            dx += 1
-        if up != -1 and up < len(pressed) and pressed[up]:
-            dy -= 1
-        if down != -1 and down < len(pressed) and pressed[down]:
-            dy += 1
+        if pressed is None:
+            if left != -1 and left in self._pressed_keys:
+                dx -= 1
+            if right != -1 and right in self._pressed_keys:
+                dx += 1
+            if up != -1 and up in self._pressed_keys:
+                dy -= 1
+            if down != -1 and down in self._pressed_keys:
+                dy += 1
+        else:
+            if left != -1 and left < len(pressed) and pressed[left]:
+                dx -= 1
+            if right != -1 and right < len(pressed) and pressed[right]:
+                dx += 1
+            if up != -1 and up < len(pressed) and pressed[up]:
+                dy -= 1
+            if down != -1 and down < len(pressed) and pressed[down]:
+                dy += 1
         return (dx, dy)
 
-    def get_direction(self, player_id: int, pressed: Tuple[bool, ...]) -> Tuple[float, float]:
+    def get_direction(self, player_id: int, pressed: Optional[Tuple[bool, ...]]) -> Tuple[float, float]:
         """Return movement direction (dx, dy) for a player based on pressed keys.
         Direction is normalized so diagonal speed matches straight-line speed.
         """
@@ -194,14 +214,24 @@ class InputHandler:
 
         dx = 0
         dy = 0
-        if left != -1 and left < len(pressed) and pressed[left]:
-            dx -= 1
-        if right != -1 and right < len(pressed) and pressed[right]:
-            dx += 1
-        if up != -1 and up < len(pressed) and pressed[up]:
-            dy -= 1
-        if down != -1 and down < len(pressed) and pressed[down]:
-            dy += 1
+        if pressed is None:
+            if left != -1 and left in self._pressed_keys:
+                dx -= 1
+            if right != -1 and right in self._pressed_keys:
+                dx += 1
+            if up != -1 and up in self._pressed_keys:
+                dy -= 1
+            if down != -1 and down in self._pressed_keys:
+                dy += 1
+        else:
+            if left != -1 and left < len(pressed) and pressed[left]:
+                dx -= 1
+            if right != -1 and right < len(pressed) and pressed[right]:
+                dx += 1
+            if up != -1 and up < len(pressed) and pressed[up]:
+                dy -= 1
+            if down != -1 and down < len(pressed) and pressed[down]:
+                dy += 1
 
         # Normalize diagonal movement
         if dx != 0 and dy != 0:

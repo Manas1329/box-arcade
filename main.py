@@ -390,10 +390,12 @@ class GameScene(Scene):
             if event.key == pygame.K_ESCAPE:
                 # Open pause menu
                 self.app.scene_manager.set(PauseScene(self.app))
+        # Forward input events to handler for unified pressed tracking
+        self.app.input_handler.handle_event(event)
 
     def update(self, dt: float):
-        pressed = pygame.key.get_pressed()
-        self.game.update(dt, self.app.input_handler, pressed)
+        # Use InputHandler's unified event-tracked state (pass None)
+        self.game.update(dt, self.app.input_handler, None)
         if self.game.is_over:
             self.app.scene_manager.set(ResultsScene(self.app, self.game))
 
@@ -536,6 +538,8 @@ class App:
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit(0)
+                # Update unified input state for KEYDOWN/KEYUP across scenes
+                self.input_handler.handle_event(event)
                 self.scene_manager.current.handle_event(event)
 
             self.scene_manager.current.update(dt)
