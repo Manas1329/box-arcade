@@ -8,6 +8,7 @@ import os
 import sys
 import json
 from typing import List, Any
+import random
 import pygame
 
 from core.input_handler import InputHandler
@@ -17,6 +18,7 @@ from games.survival import SurvivalGame, SurvivalPvpGame
 from games.snake import SnakeGame
 from games.control_zone import ControlZoneGame
 from games.trail_lock import TrailLockGame
+from games.tictactoe import TicTacToeGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -179,9 +181,9 @@ class GameSelectScene(BaseMenuScene):
     def __init__(self, app: "App"):
         mode = app.lobby.mode or "single"
         if mode == "single":
-            items = ["Snake", "Survival (Solo)", "Back"]
+            items = ["Snake", "Tic Tac Toe (Solo)", "Survival (Solo)", "Back"]
         else:
-            items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Back"]
+            items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Tic Tac Toe", "Back"]
         super().__init__(app, "Game Select", items)
 
     def handle_select(self, index: int):
@@ -199,6 +201,9 @@ class GameSelectScene(BaseMenuScene):
         elif mode == "single" and label.startswith("Snake"):
             self.app.lobby.game = "snake"
             self.app.launch_snake_game()
+        elif mode == "single" and label.startswith("Tic Tac Toe"):
+            self.app.lobby.game = "ttt_single"
+            self.app.launch_ttt_single()
         elif mode == "pvp" and label.startswith("Survival"):
             self.app.lobby.game = "survival_pvp"
             self.app.scene_manager.set(PlayerSetupScene(self.app))
@@ -208,6 +213,9 @@ class GameSelectScene(BaseMenuScene):
         elif mode == "pvp" and label.startswith("TrailLock"):
             self.app.lobby.game = "trail_lock"
             self.app.scene_manager.set(PlayerSetupScene(self.app))
+        elif mode == "pvp" and label.startswith("Tic Tac Toe"):
+            self.app.lobby.game = "ttt_pvp"
+            self.app.launch_ttt_pvp()
 
 
 class ControlsScene(BaseMenuScene):
@@ -414,6 +422,9 @@ class GameScene(Scene):
                 self.app.scene_manager.set(PauseScene(self.app))
         # Forward input events to handler for unified pressed tracking
         self.app.input_handler.handle_event(event)
+        # Forward discrete events to the game if it supports its own handler (e.g., grid navigation)
+        if hasattr(self.game, "handle_event"):
+            self.game.handle_event(event)
 
     def update(self, dt: float):
         # Use InputHandler's unified event-tracked state (pass None)
@@ -481,7 +492,9 @@ class ResultsScene(Scene):
             label = getattr(self.game, "result_label", "IT")
             # Only add 's' unit for time-based labels
             is_time_label = label.lower() in ("it", "time")
-            if show_values:
+            if hasattr(self.game, "results_header") and getattr(self.game, "results_header"):
+                wtext = self.font.render(str(getattr(self.game, "results_header")), True, (240, 240, 240))
+            elif show_values:
                 val_text = f"{t:.1f}s" if is_time_label else f"{int(t)}"
                 wtext = self.font.render(f"Winner: {winner} ({label}: {val_text})", True, (240, 240, 240))
             else:
@@ -677,6 +690,50 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = lambda: self.launch_trail_lock_game(num_players)
+        self.scene_manager.set(scene)
+
+    def launch_ttt_single(self):
+        # Persistent scoreboard across replays
+        if not hasattr(self, "ttt_single_scores"):
+            self.ttt_single_scores = {"You": 0, "Bot": 0}
+        # Randomize who is X and who starts
+        human_is_x = bool(random.getrandbits(1))
+        start_symbol = random.choice(['X', 'O'])
+        bounds = pygame.Rect(120, 100, WIDTH - 240, HEIGHT - 200)
+        game = TicTacToeGame(bounds, mode="single",
+                             player_names=("You", "Bot"),
+                             scoreboard=self.ttt_single_scores,
+                             human_symbol=('X' if human_is_x else 'O'),
+                             start_symbol=start_symbol)
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_ttt_single
+        self.scene_manager.set(scene)
+
+    def launch_ttt_pvp(self):
+        # Persistent scoreboard and alternating assignment
+        if not hasattr(self, "ttt_pvp_scores"):
+            self.ttt_pvp_scores = {"P1": 0, "P2": 0}
+        if not hasattr(self, "ttt_pvp_toggle"):
+            self.ttt_pvp_toggle = True  # True: P1 gets X first; then alternate
+        bounds = pygame.Rect(120, 100, WIDTH - 240, HEIGHT - 200)
+        # Determine starting assignment and starting player alternately
+        if self.ttt_pvp_toggle:
+            # P1 as X, starts
+            start_symbol = 'X'
+            names = ("P1", "P2")
+        else:
+            start_symbol = 'O'
+            names = ("P1", "P2")
+        game = TicTacToeGame(bounds, mode="pvp",
+                             player_names=names,
+                             scoreboard=self.ttt_pvp_scores,
+                             start_symbol=start_symbol)
+        # Flip toggle for next game
+        self.ttt_pvp_toggle = not self.ttt_pvp_toggle
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_ttt_pvp
         self.scene_manager.set(scene)
 
     def run(self):
