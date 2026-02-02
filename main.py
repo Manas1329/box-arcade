@@ -14,6 +14,7 @@ from core.input_handler import InputHandler
 from entities.player import Player, HumanPlayer, BotPlayer
 from games.tag import TagGame
 from games.survival import SurvivalGame, SurvivalPvpGame
+from games.snake import SnakeGame
 from games.control_zone import ControlZoneGame
 from games.trail_lock import TrailLockGame
 
@@ -178,7 +179,7 @@ class GameSelectScene(BaseMenuScene):
     def __init__(self, app: "App"):
         mode = app.lobby.mode or "single"
         if mode == "single":
-            items = ["Survival (Solo)", "Back"]
+            items = ["Snake", "Survival (Solo)", "Back"]
         else:
             items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Back"]
         super().__init__(app, "Game Select", items)
@@ -195,6 +196,9 @@ class GameSelectScene(BaseMenuScene):
         elif mode == "single" and label.startswith("Survival"):
             self.app.lobby.game = "survival"
             self.app.launch_survival_game()
+        elif mode == "single" and label.startswith("Snake"):
+            self.app.lobby.game = "snake"
+            self.app.launch_snake_game()
         elif mode == "pvp" and label.startswith("Survival"):
             self.app.lobby.game = "survival_pvp"
             self.app.scene_manager.set(PlayerSetupScene(self.app))
@@ -615,6 +619,16 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = self.launch_survival_game
+        self.scene_manager.set(scene)
+
+    def launch_snake_game(self):
+        bounds = pygame.Rect(20, 60, WIDTH - 40, HEIGHT - 80)
+        game = SnakeGame(bounds)
+        # Optional: ensure clean start
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_snake_game
         self.scene_manager.set(scene)
 
     def launch_survival_pvp_game(self, num_players: int):

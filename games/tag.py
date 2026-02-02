@@ -43,7 +43,7 @@ class TagGame:
                 p.update(dt, input_handler, pressed)
             else:
                 # Bot AI needs list of players and current IT
-                p.update(dt, self.players, self.current_it_id)
+                p.update(dt, self.players, self.current_it_id) # type: ignore
             p.clamp_to_bounds(self.bounds)
 
         # Collision detection & IT transfer
