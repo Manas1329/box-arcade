@@ -19,6 +19,8 @@ class BrickBreakerGame:
         self.ball_vx = float(random.choice([-160, -120, 120, 160]))
         self.ball_vy = -220.0
         self.ball_speed = 260.0
+        self.prev_ball_x = self.ball_x
+        self.prev_ball_y = self.ball_y
         # Bricks
         self.bricks = []
         self.rows = 6
@@ -89,6 +91,9 @@ class BrickBreakerGame:
     def update(self, dt: float, input_handler, pressed):
         if self.is_over:
             return
+        # Store previous position before movement
+        self.prev_ball_x = self.ball_x
+        self.prev_ball_y = self.ball_y
         # Paddle movement
         if self.move_left:
             self.paddle.x -= int(self.paddle_speed * dt)
@@ -103,27 +108,51 @@ class BrickBreakerGame:
         self.ball_x += self.ball_vx * dt
         self.ball_y += self.ball_vy * dt
         ball = self._ball_rect()
-        # Wall collisions
+        # Wall collisions with position correction
         if ball.left <= self.bounds.left:
+            self.ball_x = float(self.bounds.left)
             self.ball_vx = abs(self.ball_vx)
+            ball = self._ball_rect()
         if ball.right >= self.bounds.right:
+            self.ball_x = float(self.bounds.right - self.ball_size)
             self.ball_vx = -abs(self.ball_vx)
+            ball = self._ball_rect()
         if ball.top <= self.bounds.top:
+            self.ball_y = float(self.bounds.top)
             self.ball_vy = abs(self.ball_vy)
+            ball = self._ball_rect()
         # Paddle collision
         if ball.colliderect(self.paddle) and self.ball_vy > 0:
-            # Reflect upward and add simple angle based on hit position
-            hit_offset = (ball.centerx - self.paddle.centerx) / (self.paddle.width / 2)
-            self.ball_vy = -abs(self.ball_vy)
-            self.ball_vx = hit_offset * self.ball_speed
-            # Normalize speed magnitude towards ball_speed
-            sp = (self.ball_vx**2 + self.ball_vy**2) ** 0.5
-            if sp > 1e-3:
-                scale = self.ball_speed / sp
-                self.ball_vx *= scale
-                self.ball_vy *= scale
-            # Nudge ball out of paddle
-            self.ball_y = self.paddle.top - self.ball_size - 1
+            prev = pygame.Rect(int(self.prev_ball_x), int(self.prev_ball_y), self.ball_size, self.ball_size)
+            if prev.bottom <= self.paddle.top:
+                # Came from above: reflect vertically with angle
+                hit_offset = (ball.centerx - self.paddle.centerx) / (self.paddle.width / 2)
+                self.ball_vy = -abs(self.ball_vy)
+                self.ball_vx = hit_offset * self.ball_speed
+                # Normalize to target speed
+                sp = (self.ball_vx**2 + self.ball_vy**2) ** 0.5
+                if sp > 1e-3:
+                    scale = self.ball_speed / sp
+                    self.ball_vx *= scale
+                    self.ball_vy *= scale
+                # Position just above paddle
+                self.ball_y = float(self.paddle.top - self.ball_size - 1)
+                ball = self._ball_rect()
+            else:
+                # Side hit: reflect horizontally
+                if prev.right <= self.paddle.left:
+                    # Came from left
+                    self.ball_vx = -abs(self.ball_vx)
+                    self.ball_x = float(self.paddle.left - self.ball_size - 1)
+                elif prev.left >= self.paddle.right:
+                    # Came from right
+                    self.ball_vx = abs(self.ball_vx)
+                    self.ball_x = float(self.paddle.right + 1)
+                else:
+                    # Fallback: vertical
+                    self.ball_vy = -abs(self.ball_vy)
+                    self.ball_y = float(self.paddle.top - self.ball_size - 1)
+                ball = self._ball_rect()
         # Brick collisions
         hit_index = None
         for i, b in enumerate(self.bricks):
@@ -133,8 +162,28 @@ class BrickBreakerGame:
         if hit_index is not None:
             rect = self.bricks.pop(hit_index)
             self.score += 1
-            # Reflect based on overlap
-            self._reflect_from_rect(rect)
+            prev = pygame.Rect(int(self.prev_ball_x), int(self.prev_ball_y), self.ball_size, self.ball_size)
+            # Determine impact side using previous position
+            if prev.bottom <= rect.top and ball.bottom >= rect.top:
+                # Hit from above
+                self.ball_vy = -abs(self.ball_vy)
+                self.ball_y = float(rect.top - self.ball_size - 1)
+            elif prev.top >= rect.bottom and ball.top <= rect.bottom:
+                # Hit from below
+                self.ball_vy = abs(self.ball_vy)
+                self.ball_y = float(rect.bottom + 1)
+            elif prev.right <= rect.left and ball.right >= rect.left:
+                # Hit from left
+                self.ball_vx = -abs(self.ball_vx)
+                self.ball_x = float(rect.left - self.ball_size - 1)
+            elif prev.left >= rect.right and ball.left <= rect.right:
+                # Hit from right
+                self.ball_vx = abs(self.ball_vx)
+                self.ball_x = float(rect.right + 1)
+            else:
+                # Fallback: invert vertical
+                self.ball_vy = -self.ball_vy
+            ball = self._ball_rect()
         # Lose condition (ball below bounds)
         if ball.top > self.bounds.bottom:
             self.lives -= 1
