@@ -98,6 +98,9 @@ class SimonGridGame:
                 self.show_phase = "off"
                 self.show_timer = 0.0
                 self.input_index = 0
+                # Clear any lingering player highlight while showing sequence
+                self.player_flash_idx = None
+                self.player_flash_timer = 0.0
         else:
             # Failure
             self.is_over = True
@@ -153,7 +156,7 @@ class SimonGridGame:
         for i, rect in enumerate(self.tiles):
             if i == highlight_idx:
                 color = self.color_highlight_game
-            elif self.player_flash_idx is not None and i == self.player_flash_idx:
+            elif self.state == "input" and self.player_flash_idx is not None and i == self.player_flash_idx:
                 color = self.color_highlight_player
             else:
                 color = self.color_tile
