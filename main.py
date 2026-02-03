@@ -205,7 +205,7 @@ class GameSelectScene(BaseMenuScene):
             self.app.launch_snake_game()
         elif mode == "single" and label.startswith("Sudoku"):
             self.app.lobby.game = "sudoku"
-            self.app.launch_sudoku_game()
+            self.app.scene_manager.set(SudokuLevelSelectScene(self.app))
         elif mode == "single" and label.startswith("Tic Tac Toe"):
             self.app.lobby.game = "ttt_single"
             self.app.launch_ttt_single()
@@ -575,6 +575,20 @@ class PauseScene(BaseMenuScene):
             self.app.scene_manager.set(HomeScene(self.app))
 
 
+class SudokuLevelSelectScene(BaseMenuScene):
+    def __init__(self, app: "App"):
+        items = ["Easy", "Medium", "Hard", "Back"]
+        super().__init__(app, "Sudoku Difficulty", items)
+
+    def handle_select(self, index: int):
+        label = self.items[index]
+        if label == "Back":
+            self.app.scene_manager.set(GameSelectScene(self.app))
+            return
+        level = label.lower()
+        self.app.launch_sudoku_game(level)
+
+
 class App:
     def __init__(self):
         pygame.init()
@@ -649,14 +663,14 @@ class App:
         self.current_game_launcher = self.launch_snake_game
         self.scene_manager.set(scene)
 
-    def launch_sudoku_game(self):
+    def launch_sudoku_game(self, level: str = "easy"):
         # Centered board with margin for HUD
         bounds = pygame.Rect(100, 60, WIDTH - 200, HEIGHT - 120)
-        game = SudokuGame(bounds)
+        game = SudokuGame(bounds, level=level)
         game.reset()
         scene = GameScene(self, game)
         self._active_game_scene = scene
-        self.current_game_launcher = self.launch_sudoku_game
+        self.current_game_launcher = lambda lvl=level: self.launch_sudoku_game(lvl)
         self.scene_manager.set(scene)
 
     def launch_survival_pvp_game(self, num_players: int):
