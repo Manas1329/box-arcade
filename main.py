@@ -208,7 +208,7 @@ class GameSelectScene(BaseMenuScene):
             self.app.scene_manager.set(SudokuLevelSelectScene(self.app))
         elif mode == "single" and label.startswith("Tic Tac Toe"):
             self.app.lobby.game = "ttt_single"
-            self.app.launch_ttt_single()
+            self.app.scene_manager.set(TttSingleLevelSelectScene(self.app))
         elif mode == "pvp" and label.startswith("Survival"):
             self.app.lobby.game = "survival_pvp"
             self.app.scene_manager.set(PlayerSetupScene(self.app))
@@ -575,6 +575,19 @@ class PauseScene(BaseMenuScene):
             self.app.scene_manager.set(HomeScene(self.app))
 
 
+class TttSingleLevelSelectScene(BaseMenuScene):
+    def __init__(self, app: "App"):
+        items = ["Easy", "Medium", "Hard", "Back"]
+        super().__init__(app, "Tic Tac Toe Difficulty", items)
+
+    def handle_select(self, index: int):
+        label = self.items[index]
+        if label == "Back":
+            self.app.scene_manager.set(GameSelectScene(self.app))
+            return
+        level = label.lower()
+        self.app.launch_ttt_single(level)
+
 class SudokuLevelSelectScene(BaseMenuScene):
     def __init__(self, app: "App"):
         items = ["Easy", "Medium", "Hard", "Back"]
@@ -721,7 +734,7 @@ class App:
         self.current_game_launcher = lambda: self.launch_trail_lock_game(num_players)
         self.scene_manager.set(scene)
 
-    def launch_ttt_single(self):
+    def launch_ttt_single(self, level: str = "hard"):
         # Persistent scoreboard across replays
         if not hasattr(self, "ttt_single_scores"):
             self.ttt_single_scores = {"You": 0, "Bot": 0}
@@ -733,10 +746,11 @@ class App:
                              player_names=("You", "Bot"),
                              scoreboard=self.ttt_single_scores,
                              human_symbol=('X' if human_is_x else 'O'),
-                             start_symbol=start_symbol)
+                             start_symbol=start_symbol,
+                             ai_level=level)
         scene = GameScene(self, game)
         self._active_game_scene = scene
-        self.current_game_launcher = self.launch_ttt_single
+        self.current_game_launcher = lambda lvl=level: self.launch_ttt_single(lvl)
         self.scene_manager.set(scene)
 
     def launch_ttt_pvp(self):

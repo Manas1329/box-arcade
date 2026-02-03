@@ -15,9 +15,11 @@ class TicTacToeGame:
                  player_names: Optional[Tuple[str, str]] = None,
                  scoreboard: Optional[Dict[str, int]] = None,
                  human_symbol: Optional[str] = None,
-                 start_symbol: Optional[str] = None):
+                 start_symbol: Optional[str] = None,
+                 ai_level: str = "hard"):
         self.bounds = bounds
         self.mode = mode  # "single" or "pvp"
+        self.ai_level = ai_level if ai_level in ("easy", "medium", "hard") else "hard"
         self.grid: List[List[Optional[str]]] = [[None for _ in range(3)] for _ in range(3)]
         # Names and scoreboard
         if player_names is None:
@@ -86,26 +88,36 @@ class TicTacToeGame:
             self._ai_move()
 
     def _ai_move(self):
-        # Try to win
-        move = self._find_winning_move('O')
-        if move is None:
-            # Try to block X
-            move = self._find_winning_move('X')
-        if move is None:
-            # Center
-            if self.grid[1][1] is None:
-                move = (1, 1)
-        if move is None:
-            # Corners
-            corners = [(0,0),(2,0),(0,2),(2,2)]
-            empt = [(x,y) for (x,y) in corners if self.grid[y][x] is None]
-            if empt:
-                move = random.choice(empt)
-        if move is None:
-            # Any empty
-            empt = [(x,y) for y in range(3) for x in range(3) if self.grid[y][x] is None]
-            if empt:
-                move = random.choice(empt)
+        move: Optional[Tuple[int,int]] = None
+        empt_any = [(x,y) for y in range(3) for x in range(3) if self.grid[y][x] is None]
+        if self.ai_level == "easy":
+            # Pure random move
+            if empt_any:
+                move = random.choice(empt_any)
+        elif self.ai_level == "medium":
+            # Win or block; otherwise random
+            move = self._find_winning_move(self.ai_symbol)
+            if move is None:
+                opp = 'X' if self.ai_symbol == 'O' else 'O'
+                move = self._find_winning_move(opp)
+            if move is None and empt_any:
+                move = random.choice(empt_any)
+        else:
+            # Hard: heuristic (win → block → center → corner → random)
+            move = self._find_winning_move(self.ai_symbol)
+            if move is None:
+                opp = 'X' if self.ai_symbol == 'O' else 'O'
+                move = self._find_winning_move(opp)
+            if move is None:
+                if self.grid[1][1] is None:
+                    move = (1, 1)
+            if move is None:
+                corners = [(0,0),(2,0),(0,2),(2,2)]
+                empt_c = [(x,y) for (x,y) in corners if self.grid[y][x] is None]
+                if empt_c:
+                    move = random.choice(empt_c)
+            if move is None and empt_any:
+                move = random.choice(empt_any)
         if move is not None:
             self.grid[move[1]][move[0]] = self.ai_symbol
             if self._check_end():
