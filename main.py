@@ -125,9 +125,29 @@ class BaseMenuScene(Scene):
         surface.fill(BG_COLOR)
         # Title
         title = self.big_font.render(self.title, True, (255, 255, 255))
-        surface.blit(title, (WIDTH//2 - title.get_width()//2, 90))
+        title_y = 90
+        surface.blit(title, (WIDTH//2 - title.get_width()//2, title_y))
+
+        # Footer hint (render early to compute layout constraints)
+        hint = self.font.render("Up/Down: Navigate  Enter: Select  Esc: Back", True, (180, 180, 180))
+        hint_y = HEIGHT - 60
 
         rects = self._menu_rects()
+        # Ensure menu doesn't overlap the title; push menu down if needed
+        if rects:
+            min_start = title_y + title.get_height() + 30
+            dy_down = max(0, min_start - rects[0].top)
+            if dy_down > 0:
+                rects = [r.move(0, dy_down) for r in rects]
+            # Also ensure menu doesn't overlap the footer hint; pull up if needed
+            bottom_max = hint_y - 20
+            if rects[-1].bottom > bottom_max:
+                over = rects[-1].bottom - bottom_max
+                rects = [r.move(0, -over) for r in rects]
+                # After pulling up, re-ensure top clearance from title
+                dy_down = max(0, min_start - rects[0].top)
+                if dy_down > 0:
+                    rects = [r.move(0, dy_down) for r in rects]
         for i, rect in enumerate(rects):
             is_sel = (i == self.selected)
             fill = self.box_highlight if is_sel else self.box_color
@@ -138,8 +158,7 @@ class BaseMenuScene(Scene):
             surf = self.font.render(label, True, (240, 240, 240))
             surface.blit(surf, (rect.centerx - surf.get_width()//2, rect.centery - surf.get_height()//2))
 
-        hint = self.font.render("Up/Down: Navigate  Enter: Select  Esc: Back", True, (180, 180, 180))
-        surface.blit(hint, (WIDTH//2 - hint.get_width()//2, HEIGHT - 60))
+        surface.blit(hint, (WIDTH//2 - hint.get_width()//2, hint_y))
 
 
 class HomeScene(BaseMenuScene):
