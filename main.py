@@ -21,6 +21,7 @@ from games.trail_lock import TrailLockGame
 from games.tictactoe import TicTacToeGame
 from games.sudoku import SudokuGame
 from games.tictactoe import TicTacToeGame
+from games.brick_breaker import BrickBreakerGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -183,7 +184,7 @@ class GameSelectScene(BaseMenuScene):
     def __init__(self, app: "App"):
         mode = app.lobby.mode or "single"
         if mode == "single":
-            items = ["Snake", "Tic Tac Toe (Solo)", "Sudoku", "Survival (Solo)", "Back"]
+            items = ["Snake", "Brick Breaker", "Tic Tac Toe (Solo)", "Sudoku", "Survival (Solo)", "Back"]
         else:
             items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Tic Tac Toe", "Back"]
         super().__init__(app, "Game Select", items)
@@ -203,6 +204,9 @@ class GameSelectScene(BaseMenuScene):
         elif mode == "single" and label.startswith("Snake"):
             self.app.lobby.game = "snake"
             self.app.launch_snake_game()
+        elif mode == "single" and label.startswith("Brick Breaker"):
+            self.app.lobby.game = "brick_breaker"
+            self.app.launch_brick_breaker_game()
         elif mode == "single" and label.startswith("Sudoku"):
             self.app.lobby.game = "sudoku"
             self.app.scene_manager.set(SudokuLevelSelectScene(self.app))
@@ -674,6 +678,15 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = self.launch_snake_game
+        self.scene_manager.set(scene)
+
+    def launch_brick_breaker_game(self):
+        bounds = pygame.Rect(20, 60, WIDTH - 40, HEIGHT - 80)
+        game = BrickBreakerGame(bounds)
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_brick_breaker_game
         self.scene_manager.set(scene)
 
     def launch_sudoku_game(self, level: str = "easy"):
