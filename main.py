@@ -19,6 +19,8 @@ from games.snake import SnakeGame
 from games.control_zone import ControlZoneGame
 from games.trail_lock import TrailLockGame
 from games.tictactoe import TicTacToeGame
+from games.sudoku import SudokuGame
+from games.tictactoe import TicTacToeGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -181,7 +183,7 @@ class GameSelectScene(BaseMenuScene):
     def __init__(self, app: "App"):
         mode = app.lobby.mode or "single"
         if mode == "single":
-            items = ["Snake", "Tic Tac Toe (Solo)", "Survival (Solo)", "Back"]
+            items = ["Snake", "Tic Tac Toe (Solo)", "Sudoku", "Survival (Solo)", "Back"]
         else:
             items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Tic Tac Toe", "Back"]
         super().__init__(app, "Game Select", items)
@@ -201,6 +203,9 @@ class GameSelectScene(BaseMenuScene):
         elif mode == "single" and label.startswith("Snake"):
             self.app.lobby.game = "snake"
             self.app.launch_snake_game()
+        elif mode == "single" and label.startswith("Sudoku"):
+            self.app.lobby.game = "sudoku"
+            self.app.launch_sudoku_game()
         elif mode == "single" and label.startswith("Tic Tac Toe"):
             self.app.lobby.game = "ttt_single"
             self.app.launch_ttt_single()
@@ -642,6 +647,16 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = self.launch_snake_game
+        self.scene_manager.set(scene)
+
+    def launch_sudoku_game(self):
+        # Centered board with margin for HUD
+        bounds = pygame.Rect(100, 60, WIDTH - 200, HEIGHT - 120)
+        game = SudokuGame(bounds)
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_sudoku_game
         self.scene_manager.set(scene)
 
     def launch_survival_pvp_game(self, num_players: int):
