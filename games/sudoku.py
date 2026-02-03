@@ -243,9 +243,9 @@ class SudokuGame:
                 if event.key in digit_map:
                     val = digit_map[event.key]
                     if not self.locked[r][c]:
-                        if self._is_valid_move(r, c, val):
-                            self.grid[r][c] = val
-                        else:
+                        # Allow rewriting the selected cell directly; show feedback if invalid
+                        self.grid[r][c] = val
+                        if not self._is_valid_move(r, c, val):
                             self.invalid_flash = 0.35
 
     def _is_valid_move(self, r: int, c: int, val: int) -> bool:
