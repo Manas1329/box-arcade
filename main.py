@@ -22,6 +22,7 @@ from games.tictactoe import TicTacToeGame
 from games.sudoku import SudokuGame
 from games.tictactoe import TicTacToeGame
 from games.brick_breaker import BrickBreakerGame
+from games.simon_grid import SimonGridGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -184,7 +185,7 @@ class GameSelectScene(BaseMenuScene):
     def __init__(self, app: "App"):
         mode = app.lobby.mode or "single"
         if mode == "single":
-            items = ["Snake", "Brick Breaker", "Tic Tac Toe (Solo)", "Sudoku", "Survival (Solo)", "Back"]
+            items = ["Snake", "Brick Breaker", "Simon Grid", "Tic Tac Toe (Solo)", "Sudoku", "Survival (Solo)", "Back"]
         else:
             items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Tic Tac Toe", "Back"]
         super().__init__(app, "Game Select", items)
@@ -207,6 +208,9 @@ class GameSelectScene(BaseMenuScene):
         elif mode == "single" and label.startswith("Brick Breaker"):
             self.app.lobby.game = "brick_breaker"
             self.app.launch_brick_breaker_game()
+        elif mode == "single" and label.startswith("Simon Grid"):
+            self.app.lobby.game = "simon_grid"
+            self.app.launch_simon_grid_game()
         elif mode == "single" and label.startswith("Sudoku"):
             self.app.lobby.game = "sudoku"
             self.app.scene_manager.set(SudokuLevelSelectScene(self.app))
@@ -687,6 +691,17 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = self.launch_brick_breaker_game
+        self.scene_manager.set(scene)
+
+    def launch_simon_grid_game(self):
+        # Square-ish board area centered with top HUD room
+        bounds = pygame.Rect(140, 80, WIDTH - 280, HEIGHT - 160)
+        game = SimonGridGame(bounds, grid_size=3)
+        # game.reset() not required (constructor calls reset), but safe to ensure
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_simon_grid_game
         self.scene_manager.set(scene)
 
     def launch_sudoku_game(self, level: str = "easy"):
