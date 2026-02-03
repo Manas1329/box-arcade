@@ -736,15 +736,16 @@ class App:
 
     def launch_ttt_single(self, level: str = "hard"):
         # Persistent scoreboard across replays
-        if not hasattr(self, "ttt_single_scores"):
-            self.ttt_single_scores = {"You": 0, "Bot": 0}
+        if not hasattr(self, "ttt_single_scores_by_level"):
+            self.ttt_single_scores_by_level = {}
+        scoreboard = self.ttt_single_scores_by_level.setdefault(level, {"You": 0, "Bot": 0})
         # Randomize who is X and who starts
         human_is_x = bool(random.getrandbits(1))
         start_symbol = random.choice(['X', 'O'])
         bounds = pygame.Rect(120, 100, WIDTH - 240, HEIGHT - 200)
         game = TicTacToeGame(bounds, mode="single",
-                             player_names=("You", "Bot"),
-                             scoreboard=self.ttt_single_scores,
+                     player_names=("You", "Bot"),
+                     scoreboard=scoreboard,
                              human_symbol=('X' if human_is_x else 'O'),
                              start_symbol=start_symbol,
                              ai_level=level)
