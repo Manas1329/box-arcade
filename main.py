@@ -27,6 +27,7 @@ from games.maze_runner import MazeRunnerGame
 from games.whack_a_box import WhackABoxGame
 from games.box_stack import BoxStackGame
 from games.flappy_box import FlappyBoxGame
+from games.tetris_box import TetrisBoxGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -307,6 +308,7 @@ class SinglePlayerGameSelectScene(Scene):
             {"id": "sudoku", "title": "Sudoku", "desc": "Solve 9x9 puzzles.", "mode": "Singleplayer"},
             {"id": "survival", "title": "Survival", "desc": "Dodge hazards.", "mode": "Singleplayer"},
             {"id": "flappy_box", "title": "Flappy Box", "desc": "Flap through pipe gaps.", "mode": "Singleplayer"},
+            {"id": "tetris_box", "title": "Tetris Box", "desc": "Clear lines with falling blocks.", "mode": "Singleplayer"},
         ]
 
         # Use two columns so each card has more horizontal space
@@ -442,6 +444,9 @@ class SinglePlayerGameSelectScene(Scene):
         elif cid == "flappy_box":
             self.app.lobby.game = "flappy_box"
             self.app.launch_flappy_box_game()
+        elif cid == "tetris_box":
+            self.app.lobby.game = "tetris_box"
+            self.app.launch_tetris_box_game()
 
     def update(self, dt: float):
         # Smoothly move highlight frame toward the selected card.
@@ -1002,6 +1007,16 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = self.launch_flappy_box_game
+        self.scene_manager.set(scene)
+
+    def launch_tetris_box_game(self):
+        # Slight margins so the 10x20 grid and side HUD fit cleanly
+        bounds = pygame.Rect(60, 40, WIDTH - 120, HEIGHT - 80)
+        game = TetrisBoxGame(bounds)
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_tetris_box_game
         self.scene_manager.set(scene)
 
     def launch_box_stack_game(self):
