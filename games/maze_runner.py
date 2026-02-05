@@ -17,6 +17,10 @@ class MazeRunnerGame:
         # Player and goal in grid coordinates
         self.player_pos: Tuple[int, int] = (1, 1)
         self.goal: Tuple[int, int] = (self.grid_cols - 2, self.grid_rows - 2)
+        # Movement state for continuous stepping
+        self.move_dir: Tuple[int, int] = (0, 0)
+        self.move_delay = 0.12  # seconds between grid steps while holding
+        self.move_timer = 0.0
         # State
         self.is_over = False
         self.results_header = None
@@ -73,6 +77,8 @@ class MazeRunnerGame:
         self.elapsed = 0.0
         self.is_over = False
         self.results_header = None
+        self.move_dir = (0, 0)
+        self.move_timer = 0.0
 
     def handle_event(self, event: pygame.event.Event):
         if self.is_over:
@@ -88,7 +94,21 @@ class MazeRunnerGame:
             elif event.key in (pygame.K_DOWN, pygame.K_s):
                 dy = 1
             if dx != 0 or dy != 0:
+                # Set continuous movement direction
+                self.move_dir = (dx, dy)
+                # Immediate step on press
                 self._try_move(dx, dy)
+                self.move_timer = self.move_delay
+        elif event.type == pygame.KEYUP:
+            # Stop movement when the released key matches current direction
+            if event.key in (pygame.K_LEFT, pygame.K_a) and self.move_dir == (-1, 0):
+                self.move_dir = (0, 0)
+            elif event.key in (pygame.K_RIGHT, pygame.K_d) and self.move_dir == (1, 0):
+                self.move_dir = (0, 0)
+            elif event.key in (pygame.K_UP, pygame.K_w) and self.move_dir == (0, -1):
+                self.move_dir = (0, 0)
+            elif event.key in (pygame.K_DOWN, pygame.K_s) and self.move_dir == (0, 1):
+                self.move_dir = (0, 0)
 
     def _try_move(self, dx: int, dy: int):
         px, py = self.player_pos
@@ -110,6 +130,12 @@ class MazeRunnerGame:
         if self.is_over:
             return
         self.elapsed += dt
+        # Continuous grid stepping while a direction is held
+        if self.move_dir != (0, 0):
+            self.move_timer -= dt
+            if self.move_timer <= 0.0:
+                self._try_move(self.move_dir[0], self.move_dir[1])
+                self.move_timer = self.move_delay
 
     def scores(self):
         # Lower time is better
