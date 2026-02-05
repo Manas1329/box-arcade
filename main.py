@@ -24,6 +24,7 @@ from games.tictactoe import TicTacToeGame
 from games.brick_breaker import BrickBreakerGame
 from games.simon_grid import SimonGridGame
 from games.maze_runner import MazeRunnerGame
+from games.whack_a_box import WhackABoxGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -205,7 +206,7 @@ class GameSelectScene(BaseMenuScene):
     def __init__(self, app: "App"):
         mode = app.lobby.mode or "single"
         if mode == "single":
-            items = ["Snake", "Brick Breaker", "Simon Grid", "Maze Runner", "Tic Tac Toe (Solo)", "Sudoku", "Survival (Solo)", "Back"]
+            items = ["Snake", "Brick Breaker", "Whack-a-Box", "Simon Grid", "Maze Runner", "Tic Tac Toe (Solo)", "Sudoku", "Survival (Solo)", "Back"]
         else:
             items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Tic Tac Toe", "Back"]
         super().__init__(app, "Game Select", items)
@@ -228,6 +229,9 @@ class GameSelectScene(BaseMenuScene):
         elif mode == "single" and label.startswith("Brick Breaker"):
             self.app.lobby.game = "brick_breaker"
             self.app.launch_brick_breaker_game()
+        elif mode == "single" and label.startswith("Whack-a-Box"):
+            self.app.lobby.game = "whack_a_box"
+            self.app.launch_whack_a_box_game()
         elif mode == "single" and label.startswith("Simon Grid"):
             self.app.lobby.game = "simon_grid"
             self.app.launch_simon_grid_game()
@@ -714,6 +718,15 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = self.launch_brick_breaker_game
+        self.scene_manager.set(scene)
+
+    def launch_whack_a_box_game(self):
+        bounds = pygame.Rect(40, 80, WIDTH - 80, HEIGHT - 140)
+        game = WhackABoxGame(bounds, round_duration=30.0)
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_whack_a_box_game
         self.scene_manager.set(scene)
 
     def launch_simon_grid_game(self):
