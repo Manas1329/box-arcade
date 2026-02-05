@@ -8,6 +8,9 @@ import pygame
 class FlappyBoxGame:
     """Singleplayer Flappy Bird–style game with box visuals."""
 
+    # Session-wide best score shared across instances
+    BEST_SCORE: int = 0
+
     def __init__(self, bounds: pygame.Rect):
         self.bounds = bounds
         # Player
@@ -30,7 +33,6 @@ class FlappyBoxGame:
 
         # Scoring
         self.score = 0
-        self.best_score = 0
         self.passed_pipes: List[Tuple[pygame.Rect, pygame.Rect]] = []
 
         # State / results
@@ -140,9 +142,11 @@ class FlappyBoxGame:
 
     def _game_over(self):
         self.is_over = True
-        if self.score > self.best_score:
-            self.best_score = self.score
-        self.results_header = f"Flappy Box — Score: {self.score} (Best: {self.best_score})"
+        if self.score > FlappyBoxGame.BEST_SCORE:
+            FlappyBoxGame.BEST_SCORE = self.score
+        self.results_header = (
+            f"Flappy Box — Score: {self.score} (Best: {FlappyBoxGame.BEST_SCORE})"
+        )
 
     # --- Results integration ---------------------------------------------
     def scores(self):
@@ -169,7 +173,9 @@ class FlappyBoxGame:
 
         # HUD
         score_surf = font.render(f"Score: {self.score}", True, (255, 255, 255))
-        best_surf = font.render(f"Best: {self.best_score}", True, (230, 230, 230))
+        best_surf = font.render(
+            f"Best: {FlappyBoxGame.BEST_SCORE}", True, (230, 230, 230)
+        )
         hint = font.render("Space/Click: Flap", True, (210, 210, 210))
         surface.blit(score_surf, (10, 10))
         surface.blit(best_surf, (10, 34))
