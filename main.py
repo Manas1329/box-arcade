@@ -95,14 +95,45 @@ class BaseMenuScene(Scene):
 
     def handle_event(self, event: pygame.event.Event):
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_UP:
+            if not self.items:
+                return
+            # Support arrows and WASD/AD-style navigation
+            if event.key in (pygame.K_UP, pygame.K_w, pygame.K_a):
                 self.selected = (self.selected - 1) % len(self.items)
-            elif event.key == pygame.K_DOWN:
+            elif event.key in (pygame.K_DOWN, pygame.K_s, pygame.K_d):
                 self.selected = (self.selected + 1) % len(self.items)
             elif event.key == pygame.K_RETURN:
                 self.handle_select(self.selected)
             elif event.key == pygame.K_ESCAPE:
                 self.handle_back()
+        elif event.type == pygame.MOUSEMOTION:
+            # Hover to change selection
+            if not self.items:
+                return
+            rects, _, _, _, _ = self._layout()
+            mx, my = event.pos
+            for i, r in enumerate(rects):
+                if r.collidepoint(mx, my):
+                    self.selected = i
+                    break
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Click to activate
+            if not self.items:
+                return
+            rects, _, _, _, _ = self._layout()
+            mx, my = event.pos
+            for i, r in enumerate(rects):
+                if r.collidepoint(mx, my):
+                    self.selected = i
+                    self.handle_select(i)
+                    break
+        elif event.type == pygame.MOUSEWHEEL:
+            if not self.items:
+                return
+            if event.y > 0:
+                self.selected = (self.selected - 1) % len(self.items)
+            elif event.y < 0:
+                self.selected = (self.selected + 1) % len(self.items)
 
     def handle_select(self, index: int):
         pass
@@ -124,33 +155,44 @@ class BaseMenuScene(Scene):
             rects.append(pygame.Rect(x, y, self.box_w, self.box_h))
         return rects
 
-    def draw(self, surface: pygame.Surface):
-        surface.fill(BG_COLOR)
-        # Title
+    def _layout(self):
+        """Compute menu rects and shared title/footer layout.
+
+        Returns (rects, title_surf, title_pos, hint_surf, hint_pos).
+        Used by both draw and mouse hit-testing to keep geometry in sync.
+        """
+        rects = self._menu_rects()
+
         title = self.big_font.render(self.title, True, (255, 255, 255))
         title_y = 90
-        surface.blit(title, (WIDTH//2 - title.get_width()//2, title_y))
+        title_pos = (WIDTH // 2 - title.get_width() // 2, title_y)
 
-        # Footer hint (render early to compute layout constraints)
         hint = self.font.render("Up/Down: Navigate  Enter: Select  Esc: Back", True, (180, 180, 180))
         hint_y = HEIGHT - 60
+        hint_pos = (WIDTH // 2 - hint.get_width() // 2, hint_y)
 
-        rects = self._menu_rects()
-        # Ensure menu doesn't overlap the title; push menu down if needed
+        # Ensure menu doesn't overlap the title/footer
         if rects:
             min_start = title_y + title.get_height() + 30
             dy_down = max(0, min_start - rects[0].top)
             if dy_down > 0:
                 rects = [r.move(0, dy_down) for r in rects]
-            # Also ensure menu doesn't overlap the footer hint; pull up if needed
             bottom_max = hint_y - 20
             if rects[-1].bottom > bottom_max:
                 over = rects[-1].bottom - bottom_max
                 rects = [r.move(0, -over) for r in rects]
-                # After pulling up, re-ensure top clearance from title
                 dy_down = max(0, min_start - rects[0].top)
                 if dy_down > 0:
                     rects = [r.move(0, dy_down) for r in rects]
+
+        return rects, title, title_pos, hint, hint_pos
+
+    def draw(self, surface: pygame.Surface):
+        surface.fill(BG_COLOR)
+        rects, title, title_pos, hint, hint_pos = self._layout()
+
+        # Title
+        surface.blit(title, title_pos)
         for i, rect in enumerate(rects):
             is_sel = (i == self.selected)
             fill = self.box_highlight if is_sel else self.box_color
@@ -160,8 +202,7 @@ class BaseMenuScene(Scene):
             label = self.items[i]
             surf = self.font.render(label, True, (240, 240, 240))
             surface.blit(surf, (rect.centerx - surf.get_width()//2, rect.centery - surf.get_height()//2))
-
-        surface.blit(hint, (WIDTH//2 - hint.get_width()//2, hint_y))
+        surface.blit(hint, hint_pos)
 
 
 class HomeScene(BaseMenuScene):
@@ -249,21 +290,26 @@ class SinglePlayerGameSelectScene(Scene):
         self.app = app
         self.font = app.font
         self.big_font = app.big_font
+        # Slightly smaller font for card content so text fits cleanly.
+        self.card_font = pygame.font.SysFont("consolas", 18)
 
         # Define available single-player games with metadata.
+        # Keep descriptions very short so they fit comfortably on one line.
         self.cards: list[dict[str, Any]] = [
-            {"id": "snake", "title": "Snake", "desc": "Classic grid-based snake.", "mode": "Singleplayer"},
-            {"id": "brick_breaker", "title": "Brick Breaker", "desc": "Break bricks with a bouncing ball.", "mode": "Singleplayer"},
-            {"id": "whack_a_box", "title": "Whack-a-Box", "desc": "Click fast, hit popping boxes.", "mode": "Singleplayer"},
-            {"id": "box_stack", "title": "Box Stack", "desc": "Stack moving boxes as high as you can.", "mode": "Singleplayer"},
-            {"id": "simon_grid", "title": "Simon Grid", "desc": "Repeat the flashing box sequence.", "mode": "Singleplayer"},
-            {"id": "maze_runner", "title": "Maze Runner", "desc": "Escape a randomly carved maze.", "mode": "Singleplayer"},
-            {"id": "ttt_single", "title": "Tic Tac Toe (Solo)", "desc": "Beat the bot in 3x3 boxes.", "mode": "Singleplayer"},
-            {"id": "sudoku", "title": "Sudoku", "desc": "Solve 9x9 number puzzles.", "mode": "Singleplayer"},
-            {"id": "survival", "title": "Survival", "desc": "Dodge hazards as long as you can.", "mode": "Singleplayer"},
+            {"id": "snake", "title": "Snake", "desc": "Classic snake.", "mode": "Singleplayer"},
+            {"id": "brick_breaker", "title": "Brick Breaker", "desc": "Break falling bricks.", "mode": "Singleplayer"},
+            {"id": "whack_a_box", "title": "Whack-a-Box", "desc": "Hit popping boxes.", "mode": "Singleplayer"},
+            {"id": "box_stack", "title": "Box Stack", "desc": "Stack moving boxes.", "mode": "Singleplayer"},
+            {"id": "simon_grid", "title": "Simon Grid", "desc": "Repeat the pattern.", "mode": "Singleplayer"},
+            {"id": "maze_runner", "title": "Maze Runner", "desc": "Escape the maze.", "mode": "Singleplayer"},
+            {"id": "ttt_single", "title": "Tic Tac Toe (Solo)", "desc": "Beat the bot.", "mode": "Singleplayer"},
+            {"id": "sudoku", "title": "Sudoku", "desc": "Solve 9x9 puzzles.", "mode": "Singleplayer"},
+            {"id": "survival", "title": "Survival", "desc": "Dodge hazards.", "mode": "Singleplayer"},
         ]
 
-        self.cols = 3
+        # Use two columns so each card has more horizontal space
+        # for its title and description text.
+        self.cols = 2
         self.selected_index = 0
         self.card_rects: list[pygame.Rect] = []
         self._build_layout()
@@ -296,6 +342,19 @@ class SinglePlayerGameSelectScene(Scene):
             y = region.top + row * (card_h + gap_y)
             self.card_rects.append(pygame.Rect(x, y, card_w, card_h))
 
+    def _fit_text(self, text: str, max_width: int) -> str:
+        """Trim text with ellipsis so it fits within max_width pixels."""
+        if not text:
+            return text
+        surf = self.card_font.render(text, True, (0, 0, 0))
+        if surf.get_width() <= max_width:
+            return text
+        ellipsis = "..."
+        trimmed = text
+        while trimmed and self.card_font.render(trimmed + ellipsis, True, (0, 0, 0)).get_width() > max_width:
+            trimmed = trimmed[:-1]
+        return trimmed + ellipsis if trimmed else ellipsis
+
     def handle_event(self, event: pygame.event.Event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
@@ -307,16 +366,16 @@ class SinglePlayerGameSelectScene(Scene):
             idx = self.selected_index
             row = idx // cols
             col = idx % cols
-            if event.key == pygame.K_LEFT:
+            if event.key in (pygame.K_LEFT, pygame.K_a):
                 if col > 0:
                     idx -= 1
-            elif event.key == pygame.K_RIGHT:
+            elif event.key in (pygame.K_RIGHT, pygame.K_d):
                 if col < cols - 1 and idx + 1 < len(self.cards):
                     idx += 1
-            elif event.key == pygame.K_UP:
+            elif event.key in (pygame.K_UP, pygame.K_w):
                 if row > 0:
                     idx -= cols
-            elif event.key == pygame.K_DOWN:
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
                 if idx + cols < len(self.cards):
                     idx += cols
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
@@ -335,6 +394,17 @@ class SinglePlayerGameSelectScene(Scene):
                     self.selected_index = i
                     self._activate(i)
                     break
+        elif event.type == pygame.MOUSEWHEEL:
+            # Scroll up/down by rows
+            if not self.card_rects:
+                return
+            cols = self.cols
+            idx = self.selected_index
+            if event.y > 0 and idx - cols >= 0:
+                idx -= cols
+            elif event.y < 0 and idx + cols < len(self.cards):
+                idx += cols
+            self.selected_index = idx
 
     def _activate(self, index: int):
         if index < 0 or index >= len(self.cards):
@@ -394,7 +464,6 @@ class SinglePlayerGameSelectScene(Scene):
         base_col = (50, 50, 80)
         hover_col = (90, 90, 140)
         outline_col = (180, 180, 230)
-        tag_bg = (60, 90, 140)
 
         for i, (card, rect) in enumerate(zip(self.cards, self.card_rects)):
             is_sel = (i == self.selected_index)
@@ -403,30 +472,16 @@ class SinglePlayerGameSelectScene(Scene):
             pygame.draw.rect(surface, outline_col, rect, 2)
 
             # Game title
-            t_surf = self.font.render(card["title"], True, (240, 240, 240))
+            max_title_w = rect.width - 24  # padding
+            title_text = self._fit_text(card["title"], max_title_w)
+            t_surf = self.card_font.render(title_text, True, (240, 240, 240))
             surface.blit(t_surf, (rect.left + 12, rect.top + 10))
 
-            # Mode tag
-            tag_surf = self.font.render(card["mode"], True, (230, 230, 255))
-            tag_rect = tag_surf.get_rect()
-            tag_rect.right = rect.right - 12
-            tag_rect.top = rect.top + 10
-            tag_bg_rect = tag_rect.inflate(8, 4)
-            pygame.draw.rect(surface, tag_bg, tag_bg_rect)
-            pygame.draw.rect(surface, outline_col, tag_bg_rect, 1)
-            surface.blit(tag_surf, tag_rect)
-
-            # Description
-            d_surf = self.font.render(card["desc"], True, (210, 210, 220))
+            # Description (single, clamped line)
+            max_desc_w = rect.width - 24  # padding only
+            desc_text = self._fit_text(card["desc"], max_desc_w)
+            d_surf = self.card_font.render(desc_text, True, (210, 210, 220))
             surface.blit(d_surf, (rect.left + 12, rect.top + 34))
-
-            # Optional placeholder icon - small box on the right side
-            icon_size = 32
-            icon_rect = pygame.Rect(0, 0, icon_size, icon_size)
-            icon_rect.right = rect.right - 16
-            icon_rect.bottom = rect.bottom - 14
-            pygame.draw.rect(surface, (100, 130, 190), icon_rect)
-            pygame.draw.rect(surface, (220, 230, 250), icon_rect, 2)
 
         # Highlight frame with smooth movement
         if self.card_rects:
@@ -683,19 +738,40 @@ class ResultsScene(Scene):
 
     def handle_event(self, event: pygame.event.Event):
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_UP:
+            if event.key in (pygame.K_UP, pygame.K_w, pygame.K_a):
                 self.selected = (self.selected - 1) % len(self.items)
-            elif event.key == pygame.K_DOWN:
+            elif event.key in (pygame.K_DOWN, pygame.K_s, pygame.K_d):
                 self.selected = (self.selected + 1) % len(self.items)
             elif event.key == pygame.K_RETURN:
-                label = self.items[self.selected]
-                if label == "Play Again":
-                    if hasattr(self.app, "current_game_launcher") and self.app.current_game_launcher:
-                        self.app.current_game_launcher()
-                elif label == "Main Menu":
-                    self.app.scene_manager.set(HomeScene(self.app))
+                self._activate_selected()
             elif event.key == pygame.K_ESCAPE:
                 self.app.scene_manager.set(HomeScene(self.app))
+        elif event.type == pygame.MOUSEMOTION:
+            mx, my = event.pos
+            for i, r in enumerate(self._button_rects()):
+                if r.collidepoint(mx, my):
+                    self.selected = i
+                    break
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            for i, r in enumerate(self._button_rects()):
+                if r.collidepoint(mx, my):
+                    self.selected = i
+                    self._activate_selected()
+                    break
+        elif event.type == pygame.MOUSEWHEEL:
+            if event.y > 0:
+                self.selected = (self.selected - 1) % len(self.items)
+            elif event.y < 0:
+                self.selected = (self.selected + 1) % len(self.items)
+
+    def _activate_selected(self):
+        label = self.items[self.selected]
+        if label == "Play Again":
+            if hasattr(self.app, "current_game_launcher") and self.app.current_game_launcher:
+                self.app.current_game_launcher()
+        elif label == "Main Menu":
+            self.app.scene_manager.set(HomeScene(self.app))
 
     def update(self, dt: float):
         pass
@@ -754,17 +830,23 @@ class ResultsScene(Scene):
                 pygame.draw.rect(surface, (220, 220, 220), box, 2)
             surface.blit(surf, (line_x, line_y))
 
-        box_w = 300
-        box_h = 44
-        gap = 14
-        start_y = HEIGHT - 160
         for i, label in enumerate(self.items):
-            rect = pygame.Rect(WIDTH//2 - box_w//2, start_y + i*(box_h+gap), box_w, box_h)
+            rect = self._button_rects()[i]
             fill = (120, 120, 180) if i == self.selected else (70, 70, 90)
             pygame.draw.rect(surface, fill, rect)
             pygame.draw.rect(surface, (180, 180, 220), rect, 2)
             surf = self.font.render(label, True, (240, 240, 240))
             surface.blit(surf, (rect.centerx - surf.get_width()//2, rect.centery - surf.get_height()//2))
+
+    def _button_rects(self) -> list[pygame.Rect]:
+        box_w = 300
+        box_h = 44
+        gap = 14
+        start_y = HEIGHT - 160
+        return [
+            pygame.Rect(WIDTH//2 - box_w//2, start_y + i*(box_h+gap), box_w, box_h)
+            for i in range(len(self.items))
+        ]
 
 
 class PauseScene(BaseMenuScene):
