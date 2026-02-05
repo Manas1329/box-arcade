@@ -78,20 +78,30 @@ class BoxStackGame:
             return
         top = self.layers[-1]
         placed = self.active
-        # Overlap with previous layer
-        overlap = placed.clip(top)
-        if overlap.width <= 0:
-            # No overlap: game over, keep current score
+        # Compute horizontal overlap with previous layer only.
+        # Vertically the moving layer sits exactly above the previous one,
+        # so full-rect clipping would report no intersection.
+        left = max(placed.left, top.left)
+        right = min(placed.right, top.right)
+        width = right - left
+        if width <= 0:
+            # No horizontal overlap: game over, keep current score
             self.is_over = True
             self.results_header = f"Stack Collapsed (Height {self.score})"
             if self.score > BoxStackGame.BEST_SCORE:
                 BoxStackGame.BEST_SCORE = self.score
             return
+
+        # Create the new stacked layer using the horizontal overlap
+        overlap = pygame.Rect(left, 0, width, self.layer_height)
+        overlap.bottom = top.top
+
         # Misaligned parts are cut off
         self.layers.append(overlap)
         self.score = len(self.layers)
         if self.score > BoxStackGame.BEST_SCORE:
             BoxStackGame.BEST_SCORE = self.score
+
         # Flash the cut region for feedback
         if overlap.width < placed.width:
             # Compute cut rect as difference
@@ -106,7 +116,9 @@ class BoxStackGame:
         else:
             self.cut_flash = None
             self.cut_flash_time = 0.0
+
         self.active = None
+
         # Check size threshold
         if overlap.width <= self.min_width:
             self.is_over = True
