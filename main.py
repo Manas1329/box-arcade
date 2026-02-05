@@ -26,6 +26,7 @@ from games.simon_grid import SimonGridGame
 from games.maze_runner import MazeRunnerGame
 from games.whack_a_box import WhackABoxGame
 from games.box_stack import BoxStackGame
+from games.flappy_box import FlappyBoxGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -305,6 +306,7 @@ class SinglePlayerGameSelectScene(Scene):
             {"id": "ttt_single", "title": "Tic Tac Toe (Solo)", "desc": "Beat the bot.", "mode": "Singleplayer"},
             {"id": "sudoku", "title": "Sudoku", "desc": "Solve 9x9 puzzles.", "mode": "Singleplayer"},
             {"id": "survival", "title": "Survival", "desc": "Dodge hazards.", "mode": "Singleplayer"},
+            {"id": "flappy_box", "title": "Flappy Box", "desc": "Flap through pipe gaps.", "mode": "Singleplayer"},
         ]
 
         # Use two columns so each card has more horizontal space
@@ -437,6 +439,9 @@ class SinglePlayerGameSelectScene(Scene):
         elif cid == "survival":
             self.app.lobby.game = "survival"
             self.app.launch_survival_game()
+        elif cid == "flappy_box":
+            self.app.lobby.game = "flappy_box"
+            self.app.launch_flappy_box_game()
 
     def update(self, dt: float):
         # Smoothly move highlight frame toward the selected card.
@@ -988,6 +993,15 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = self.launch_whack_a_box_game
+        self.scene_manager.set(scene)
+
+    def launch_flappy_box_game(self):
+        bounds = pygame.Rect(80, 60, WIDTH - 160, HEIGHT - 120)
+        game = FlappyBoxGame(bounds)
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_flappy_box_game
         self.scene_manager.set(scene)
 
     def launch_box_stack_game(self):
