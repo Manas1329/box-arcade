@@ -23,6 +23,7 @@ from games.sudoku import SudokuGame
 from games.tictactoe import TicTacToeGame
 from games.brick_breaker import BrickBreakerGame
 from games.simon_grid import SimonGridGame
+from games.maze_runner import MazeRunnerGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -204,7 +205,7 @@ class GameSelectScene(BaseMenuScene):
     def __init__(self, app: "App"):
         mode = app.lobby.mode or "single"
         if mode == "single":
-            items = ["Snake", "Brick Breaker", "Simon Grid", "Tic Tac Toe (Solo)", "Sudoku", "Survival (Solo)", "Back"]
+            items = ["Snake", "Brick Breaker", "Simon Grid", "Maze Runner", "Tic Tac Toe (Solo)", "Sudoku", "Survival (Solo)", "Back"]
         else:
             items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Tic Tac Toe", "Back"]
         super().__init__(app, "Game Select", items)
@@ -230,6 +231,9 @@ class GameSelectScene(BaseMenuScene):
         elif mode == "single" and label.startswith("Simon Grid"):
             self.app.lobby.game = "simon_grid"
             self.app.launch_simon_grid_game()
+        elif mode == "single" and label.startswith("Maze Runner"):
+            self.app.lobby.game = "maze_runner"
+            self.app.launch_maze_runner_game()
         elif mode == "single" and label.startswith("Sudoku"):
             self.app.lobby.game = "sudoku"
             self.app.scene_manager.set(SudokuLevelSelectScene(self.app))
@@ -721,6 +725,15 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = self.launch_simon_grid_game
+        self.scene_manager.set(scene)
+
+    def launch_maze_runner_game(self):
+        bounds = pygame.Rect(40, 60, WIDTH - 80, HEIGHT - 120)
+        game = MazeRunnerGame(bounds)
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_maze_runner_game
         self.scene_manager.set(scene)
 
     def launch_sudoku_game(self, level: str = "easy"):
