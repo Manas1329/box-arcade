@@ -198,19 +198,22 @@ class ModeSelectScene(BaseMenuScene):
         label = self.items[index]
         if label.startswith("Single"):
             self.app.lobby.mode = "single"
+            # Use dedicated card-based selector for single player games
+            self.app.scene_manager.set(SinglePlayerGameSelectScene(self.app))
         elif label.startswith("PvP"):
             self.app.lobby.mode = "pvp"
-        self.app.scene_manager.set(GameSelectScene(self.app))
+            self.app.scene_manager.set(GameSelectScene(self.app))
 
 
 class GameSelectScene(BaseMenuScene):
     def __init__(self, app: "App"):
         mode = app.lobby.mode or "single"
-        if mode == "single":
-            items = ["Snake", "Brick Breaker", "Whack-a-Box", "Box Stack", "Simon Grid", "Maze Runner", "Tic Tac Toe (Solo)", "Sudoku", "Survival (Solo)", "Back"]
-        else:
-            items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Tic Tac Toe", "Back"]
-        super().__init__(app, "Game Select", items)
+        # This menu is now used only for PvP selection; single-player
+        # uses SinglePlayerGameSelectScene.
+        if mode != "pvp":
+            mode = "pvp"
+        items = ["Tag (Boxes)", "Survival (PvP)", "Control Zone", "TrailLock", "Tic Tac Toe", "Back"]
+        super().__init__(app, "PvP Game Select", items)
 
     def handle_select(self, index: int):
         label = self.items[index]
@@ -221,33 +224,6 @@ class GameSelectScene(BaseMenuScene):
         if mode == "pvp" and label.startswith("Tag"):
             self.app.lobby.game = "tag"
             self.app.scene_manager.set(PlayerSetupScene(self.app))
-        elif mode == "single" and label.startswith("Survival"):
-            self.app.lobby.game = "survival"
-            self.app.launch_survival_game()
-        elif mode == "single" and label.startswith("Snake"):
-            self.app.lobby.game = "snake"
-            self.app.launch_snake_game()
-        elif mode == "single" and label.startswith("Brick Breaker"):
-            self.app.lobby.game = "brick_breaker"
-            self.app.launch_brick_breaker_game()
-        elif mode == "single" and label.startswith("Whack-a-Box"):
-            self.app.lobby.game = "whack_a_box"
-            self.app.launch_whack_a_box_game()
-        elif mode == "single" and label.startswith("Box Stack"):
-            self.app.lobby.game = "box_stack"
-            self.app.launch_box_stack_game()
-        elif mode == "single" and label.startswith("Simon Grid"):
-            self.app.lobby.game = "simon_grid"
-            self.app.launch_simon_grid_game()
-        elif mode == "single" and label.startswith("Maze Runner"):
-            self.app.lobby.game = "maze_runner"
-            self.app.launch_maze_runner_game()
-        elif mode == "single" and label.startswith("Sudoku"):
-            self.app.lobby.game = "sudoku"
-            self.app.scene_manager.set(SudokuLevelSelectScene(self.app))
-        elif mode == "single" and label.startswith("Tic Tac Toe"):
-            self.app.lobby.game = "ttt_single"
-            self.app.scene_manager.set(TttSingleLevelSelectScene(self.app))
         elif mode == "pvp" and label.startswith("Survival"):
             self.app.lobby.game = "survival_pvp"
             self.app.scene_manager.set(PlayerSetupScene(self.app))
@@ -260,6 +236,205 @@ class GameSelectScene(BaseMenuScene):
         elif mode == "pvp" and label.startswith("Tic Tac Toe"):
             self.app.lobby.game = "ttt_pvp"
             self.app.launch_ttt_pvp()
+
+
+class SinglePlayerGameSelectScene(Scene):
+    """Card-based selector for single-player games.
+
+    Displays fixed-size game cards in a grid with keyboard and mouse
+    navigation and a smooth-moving highlight frame.
+    """
+
+    def __init__(self, app: "App"):
+        self.app = app
+        self.font = app.font
+        self.big_font = app.big_font
+
+        # Define available single-player games with metadata.
+        self.cards: list[dict[str, Any]] = [
+            {"id": "snake", "title": "Snake", "desc": "Classic grid-based snake.", "mode": "Singleplayer"},
+            {"id": "brick_breaker", "title": "Brick Breaker", "desc": "Break bricks with a bouncing ball.", "mode": "Singleplayer"},
+            {"id": "whack_a_box", "title": "Whack-a-Box", "desc": "Click fast, hit popping boxes.", "mode": "Singleplayer"},
+            {"id": "box_stack", "title": "Box Stack", "desc": "Stack moving boxes as high as you can.", "mode": "Singleplayer"},
+            {"id": "simon_grid", "title": "Simon Grid", "desc": "Repeat the flashing box sequence.", "mode": "Singleplayer"},
+            {"id": "maze_runner", "title": "Maze Runner", "desc": "Escape a randomly carved maze.", "mode": "Singleplayer"},
+            {"id": "ttt_single", "title": "Tic Tac Toe (Solo)", "desc": "Beat the bot in 3x3 boxes.", "mode": "Singleplayer"},
+            {"id": "sudoku", "title": "Sudoku", "desc": "Solve 9x9 number puzzles.", "mode": "Singleplayer"},
+            {"id": "survival", "title": "Survival", "desc": "Dodge hazards as long as you can.", "mode": "Singleplayer"},
+        ]
+
+        self.cols = 3
+        self.selected_index = 0
+        self.card_rects: list[pygame.Rect] = []
+        self._build_layout()
+
+        # Highlight frame center for smooth movement
+        if self.card_rects:
+            cx, cy = self.card_rects[0].center
+        else:
+            cx, cy = WIDTH // 2, HEIGHT // 2
+        self.highlight_center = [float(cx), float(cy)]
+
+    def _build_layout(self):
+        # Define a grid region under the title and above the footer.
+        margin_x = 80
+        margin_top = 140
+        margin_bottom = 90
+        region = pygame.Rect(margin_x, margin_top,
+                             WIDTH - 2 * margin_x,
+                             HEIGHT - margin_top - margin_bottom)
+        gap_x = 22
+        gap_y = 22
+        card_w = (region.width - gap_x * (self.cols - 1)) // self.cols
+        rows = (len(self.cards) + self.cols - 1) // self.cols
+        card_h = (region.height - gap_y * (rows - 1)) // max(1, rows)
+        self.card_rects.clear()
+        for i, _ in enumerate(self.cards):
+            row = i // self.cols
+            col = i % self.cols
+            x = region.left + col * (card_w + gap_x)
+            y = region.top + row * (card_h + gap_y)
+            self.card_rects.append(pygame.Rect(x, y, card_w, card_h))
+
+    def handle_event(self, event: pygame.event.Event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.app.scene_manager.set(ModeSelectScene(self.app))
+                return
+            if not self.card_rects:
+                return
+            cols = self.cols
+            idx = self.selected_index
+            row = idx // cols
+            col = idx % cols
+            if event.key == pygame.K_LEFT:
+                if col > 0:
+                    idx -= 1
+            elif event.key == pygame.K_RIGHT:
+                if col < cols - 1 and idx + 1 < len(self.cards):
+                    idx += 1
+            elif event.key == pygame.K_UP:
+                if row > 0:
+                    idx -= cols
+            elif event.key == pygame.K_DOWN:
+                if idx + cols < len(self.cards):
+                    idx += cols
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                self._activate(self.selected_index)
+            self.selected_index = max(0, min(idx, len(self.cards) - 1))
+        elif event.type == pygame.MOUSEMOTION:
+            mx, my = event.pos
+            for i, r in enumerate(self.card_rects):
+                if r.collidepoint(mx, my):
+                    self.selected_index = i
+                    break
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            for i, r in enumerate(self.card_rects):
+                if r.collidepoint(mx, my):
+                    self.selected_index = i
+                    self._activate(i)
+                    break
+
+    def _activate(self, index: int):
+        if index < 0 or index >= len(self.cards):
+            return
+        cid = self.cards[index]["id"]
+        if cid == "snake":
+            self.app.lobby.game = "snake"
+            self.app.launch_snake_game()
+        elif cid == "brick_breaker":
+            self.app.lobby.game = "brick_breaker"
+            self.app.launch_brick_breaker_game()
+        elif cid == "whack_a_box":
+            self.app.lobby.game = "whack_a_box"
+            self.app.launch_whack_a_box_game()
+        elif cid == "box_stack":
+            self.app.lobby.game = "box_stack"
+            self.app.launch_box_stack_game()
+        elif cid == "simon_grid":
+            self.app.lobby.game = "simon_grid"
+            self.app.launch_simon_grid_game()
+        elif cid == "maze_runner":
+            self.app.lobby.game = "maze_runner"
+            self.app.launch_maze_runner_game()
+        elif cid == "ttt_single":
+            self.app.lobby.game = "ttt_single"
+            self.app.scene_manager.set(TttSingleLevelSelectScene(self.app))
+        elif cid == "sudoku":
+            self.app.lobby.game = "sudoku"
+            self.app.scene_manager.set(SudokuLevelSelectScene(self.app))
+        elif cid == "survival":
+            self.app.lobby.game = "survival"
+            self.app.launch_survival_game()
+
+    def update(self, dt: float):
+        # Smoothly move highlight frame toward the selected card.
+        if not self.card_rects or self.selected_index >= len(self.card_rects):
+            return
+        target = self.card_rects[self.selected_index].center
+        speed = 12.0
+        for i in (0, 1):
+            delta = target[i] - self.highlight_center[i]
+            self.highlight_center[i] += delta * min(1.0, speed * dt)
+
+    def draw(self, surface: pygame.Surface):
+        surface.fill(BG_COLOR)
+        # Title
+        title = self.big_font.render("Single Player", True, (255, 255, 255))
+        title_y = 80
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, title_y))
+
+        # Footer hint
+        hint = self.font.render("Arrows/Mouse: Select  Enter/Click: Start  Esc: Back", True, (180, 180, 180))
+        hint_y = HEIGHT - 50
+        surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, hint_y))
+
+        # Draw cards
+        base_col = (50, 50, 80)
+        hover_col = (90, 90, 140)
+        outline_col = (180, 180, 230)
+        tag_bg = (60, 90, 140)
+
+        for i, (card, rect) in enumerate(zip(self.cards, self.card_rects)):
+            is_sel = (i == self.selected_index)
+            fill = hover_col if is_sel else base_col
+            pygame.draw.rect(surface, fill, rect)
+            pygame.draw.rect(surface, outline_col, rect, 2)
+
+            # Game title
+            t_surf = self.font.render(card["title"], True, (240, 240, 240))
+            surface.blit(t_surf, (rect.left + 12, rect.top + 10))
+
+            # Mode tag
+            tag_surf = self.font.render(card["mode"], True, (230, 230, 255))
+            tag_rect = tag_surf.get_rect()
+            tag_rect.right = rect.right - 12
+            tag_rect.top = rect.top + 10
+            tag_bg_rect = tag_rect.inflate(8, 4)
+            pygame.draw.rect(surface, tag_bg, tag_bg_rect)
+            pygame.draw.rect(surface, outline_col, tag_bg_rect, 1)
+            surface.blit(tag_surf, tag_rect)
+
+            # Description
+            d_surf = self.font.render(card["desc"], True, (210, 210, 220))
+            surface.blit(d_surf, (rect.left + 12, rect.top + 34))
+
+            # Optional placeholder icon - small box on the right side
+            icon_size = 32
+            icon_rect = pygame.Rect(0, 0, icon_size, icon_size)
+            icon_rect.right = rect.right - 16
+            icon_rect.bottom = rect.bottom - 14
+            pygame.draw.rect(surface, (100, 130, 190), icon_rect)
+            pygame.draw.rect(surface, (220, 230, 250), icon_rect, 2)
+
+        # Highlight frame with smooth movement
+        if self.card_rects:
+            hw = self.card_rects[0].width + 16
+            hh = self.card_rects[0].height + 16
+            frame = pygame.Rect(0, 0, hw, hh)
+            frame.center = (int(self.highlight_center[0]), int(self.highlight_center[1]))
+            pygame.draw.rect(surface, (230, 230, 255), frame, 3)
 
 
 class ControlsScene(BaseMenuScene):
