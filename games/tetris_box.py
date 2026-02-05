@@ -160,7 +160,9 @@ class TetrisBoxGame:
             self.is_over = True
             self.results_header = "Tetris — Game Over"
 
-    def _can_place(self, shape: str, rot: int, pos: Tuple[int, int]) -> bool:
+    def _can_place(self, shape: Optional[str], rot: int, pos: Tuple[int, int]) -> bool:
+        if shape is None:
+            return False
         blocks = self.shapes[shape][rot]
         px, py = pos
         for bx, by in blocks:

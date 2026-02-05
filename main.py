@@ -28,6 +28,7 @@ from games.whack_a_box import WhackABoxGame
 from games.box_stack import BoxStackGame
 from games.flappy_box import FlappyBoxGame
 from games.tetris_box import TetrisBoxGame
+from games.zip_box import ZipBoxGame
 
 # Window settings
 WIDTH, HEIGHT = 800, 600
@@ -309,6 +310,7 @@ class SinglePlayerGameSelectScene(Scene):
             {"id": "survival", "title": "Survival", "desc": "Dodge hazards.", "mode": "Singleplayer"},
             {"id": "flappy_box", "title": "Flappy Box", "desc": "Flap through pipe gaps.", "mode": "Singleplayer"},
             {"id": "tetris_box", "title": "Tetris Box", "desc": "Clear lines with falling blocks.", "mode": "Singleplayer"},
+            {"id": "zip_box", "title": "Zip Box", "desc": "Connect numbers with paths.", "mode": "Singleplayer"},
         ]
 
         # Use two columns so each card has more horizontal space
@@ -447,6 +449,9 @@ class SinglePlayerGameSelectScene(Scene):
         elif cid == "tetris_box":
             self.app.lobby.game = "tetris_box"
             self.app.launch_tetris_box_game()
+        elif cid == "zip_box":
+            self.app.lobby.game = "zip_box"
+            self.app.launch_zip_box_game()
 
     def update(self, dt: float):
         # Smoothly move highlight frame toward the selected card.
@@ -1017,6 +1022,16 @@ class App:
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = self.launch_tetris_box_game
+        self.scene_manager.set(scene)
+
+    def launch_zip_box_game(self):
+        # Central board area for the numbered-grid puzzle
+        bounds = pygame.Rect(60, 60, WIDTH - 120, HEIGHT - 120)
+        game = ZipBoxGame(bounds)
+        game.reset()
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
+        self.current_game_launcher = self.launch_zip_box_game
         self.scene_manager.set(scene)
 
     def launch_box_stack_game(self):
