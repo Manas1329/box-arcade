@@ -30,8 +30,6 @@ class BoxStackGame:
         # Visuals
         self.cut_flash: Optional[pygame.Rect] = None
         self.cut_flash_time = 0.0
-        # Camera offset so the view can follow a tall stack
-        self.camera_offset_y = 0.0
         # Minimum width before game ends
         self.min_width = 20
         self._spawn_next_layer()
@@ -49,7 +47,6 @@ class BoxStackGame:
         self.results_header = None
         self.cut_flash = None
         self.cut_flash_time = 0.0
-        self.camera_offset_y = 0.0
         self._spawn_next_layer()
 
     def _spawn_next_layer(self):
@@ -129,24 +126,45 @@ class BoxStackGame:
         else:
             self._spawn_next_layer()
 
-        # After placing a layer, update camera so the tower stays visible
-        self._update_camera()
+        # After placing a layer, adjust stack so the active part stays visible
+        self._adjust_stack_vertical()
 
-    def _update_camera(self):
-        """Adjust vertical camera offset so the growing stack stays in view.
+    def _adjust_stack_vertical(self):
+        """Ensure the visible action stays within the playfield without a camera.
 
-        We treat layer rects as world coordinates and only apply
-        camera_offset_y during drawing, so gameplay math remains unchanged.
+        Once the stack grows tall enough that its top is too close to the
+        upper edge, we nudge the *entire* stack downward and drop bottom
+        layers that slide past the bottom. This makes lower boxes disappear
+        over time while keeping the active area on-screen, with no camera
+        offset math.
         """
         if not self.layers:
             return
+
         top_layer = self.layers[-1]
-        # Aim to keep the top of the tower around the upper third of bounds
-        desired_screen_top = self.bounds.top + int(self.bounds.height * 0.35)
-        current_screen_top = top_layer.top + int(self.camera_offset_y)
-        if current_screen_top < desired_screen_top:
-            delta = desired_screen_top - current_screen_top
-            self.camera_offset_y += delta
+        top_y = top_layer.top
+
+        # If there's still plenty of room above the tower, do nothing.
+        safe_margin = 40
+        target_top = self.bounds.top + safe_margin
+        if top_y >= target_top:
+            return
+
+        # Shift everything down just enough so the top sits at target_top.
+        delta = target_top - top_y  # positive
+        for r in self.layers:
+            r.y += delta
+        if self.active is not None:
+            self.active.y += delta
+        if self.cut_flash is not None:
+            self.cut_flash.y += delta
+
+        # Remove bottom layers that have fallen below the bottom edge.
+        bottom_limit = self.bounds.bottom - 10
+        while len(self.layers) > 1 and self.layers[0].bottom > bottom_limit:
+            self.layers.pop(0)
+        # Keep score in sync with current visible layers
+        self.score = len(self.layers)
 
     def update(self, dt: float, input_handler, pressed):
         if self.is_over:
@@ -176,23 +194,17 @@ class BoxStackGame:
         # Draw stack layers
         for i, r in enumerate(self.layers):
             col = (90 + i * 10 % 80, 150, 200)
-            dr = r.copy()
-            dr.y += int(self.camera_offset_y)
-            pygame.draw.rect(surface, col, dr)
-            pygame.draw.rect(surface, (230, 240, 250), dr, 2)
+            pygame.draw.rect(surface, col, r)
+            pygame.draw.rect(surface, (230, 240, 250), r, 2)
         # Active moving layer
         if self.active is not None:
-            ar = self.active.copy()
-            ar.y += int(self.camera_offset_y)
-            pygame.draw.rect(surface, (220, 160, 120), ar)
-            pygame.draw.rect(surface, (250, 230, 210), ar, 2)
+            pygame.draw.rect(surface, (220, 160, 120), self.active)
+            pygame.draw.rect(surface, (250, 230, 210), self.active, 2)
         # Cut flash
         if self.cut_flash is not None and self.cut_flash_time > 0.0:
-            fr = self.cut_flash.copy()
-            fr.y += int(self.camera_offset_y)
-            s = pygame.Surface((fr.width, fr.height), pygame.SRCALPHA)
+            s = pygame.Surface((self.cut_flash.width, self.cut_flash.height), pygame.SRCALPHA)
             s.fill((255, 230, 150, 160))
-            surface.blit(s, fr.topleft)
+            surface.blit(s, self.cut_flash.topleft)
         # HUD
         h_text = font.render(f"Height: {self.score}", True, (255, 255, 255))
         b_text = font.render(f"Best: {BoxStackGame.BEST_SCORE}", True, (230, 230, 230))
