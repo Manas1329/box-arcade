@@ -486,17 +486,26 @@ class SinglePlayerGameSelectScene(Scene):
             pygame.draw.rect(surface, fill, rect)
             pygame.draw.rect(surface, outline_col, rect, 2)
 
-            # Game title
-            max_title_w = rect.width - 24  # padding
-            title_text = self._fit_text(card["title"], max_title_w)
-            t_surf = self.card_font.render(title_text, True, (240, 240, 240))
-            surface.blit(t_surf, (rect.left + 12, rect.top + 10))
+            # Center title and description text vertically/horizontally in the card
+            max_text_w = rect.width - 24  # horizontal padding
+            title_text = self._fit_text(card["title"], max_text_w)
+            desc_text = self._fit_text(card["desc"], max_text_w)
 
-            # Description (single, clamped line)
-            max_desc_w = rect.width - 24  # padding only
-            desc_text = self._fit_text(card["desc"], max_desc_w)
+            t_surf = self.card_font.render(title_text, True, (240, 240, 240))
             d_surf = self.card_font.render(desc_text, True, (210, 210, 220))
-            surface.blit(d_surf, (rect.left + 12, rect.top + 34))
+
+            total_text_h = t_surf.get_height() + 6 + d_surf.get_height()
+            start_y = rect.centery - total_text_h // 2
+
+            # Title centered
+            t_x = rect.centerx - t_surf.get_width() // 2
+            t_y = start_y
+            surface.blit(t_surf, (t_x, t_y))
+
+            # Description centered under title
+            d_x = rect.centerx - d_surf.get_width() // 2
+            d_y = start_y + t_surf.get_height() + 6
+            surface.blit(d_surf, (d_x, d_y))
 
         # Highlight frame with smooth movement
         if self.card_rects:
