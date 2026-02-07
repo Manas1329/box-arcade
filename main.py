@@ -30,8 +30,8 @@ from games.flappy_box import FlappyBoxGame
 from games.tetris_box import TetrisBoxGame
 from games.zip_box import ZipBoxGame
 
-# Window settings
-WIDTH, HEIGHT = 800, 600
+# Window settings (upscaled for side-view platformer arenas)
+WIDTH, HEIGHT = 1280, 720
 BG_COLOR = (20, 20, 30)
 
 # Player colors (distinct boxes)
