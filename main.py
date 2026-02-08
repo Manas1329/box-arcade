@@ -71,6 +71,12 @@ class LobbyState:
         self.mode: str | None = None  # 'pvp' or 'single'
         self.game: str | None = None  # e.g., 'tag'
         self.num_players: int = 2     # PvP setup (2–4)
+        # Tag-specific settings
+        self.tag_double_jump: bool = False
+        self.tag_map_index: int = 0
+        self.tag_enable_moving: bool = False
+        self.tag_enable_dropthrough: bool = False
+        self.tag_enable_speed: bool = False
 
 
 class BaseMenuScene(Scene):
@@ -571,7 +577,8 @@ class PlayerSetupScene(BaseMenuScene):
         label = self.items[index]
         if label == "Start Game":
             if self.app.lobby.game == "tag":
-                self.app.launch_tag_game(self.app.lobby.num_players)
+                # Go to Tag-specific settings before starting the match
+                self.app.scene_manager.set(TagSettingsScene(self.app))
             elif self.app.lobby.game == "survival_pvp":
                 self.app.launch_survival_pvp_game(self.app.lobby.num_players)
             elif self.app.lobby.game == "control_zone":
@@ -613,6 +620,54 @@ class PlayerSetupScene(BaseMenuScene):
             text = f"P{pid}: up={actions.get('up','')} down={actions.get('down','')} left={actions.get('left','')} right={actions.get('right','')}"
             surf = self.font.render(text, True, (220, 220, 230))
             surface.blit(surf, (swatch.right + 12, rect.centery - surf.get_height()//2))
+
+
+class TagSettingsScene(BaseMenuScene):
+    """Pregame settings screen for PvP Tag variants."""
+
+    def __init__(self, app: "App"):
+        # Items are placeholders; labels are filled dynamically in draw()
+        items = [
+            "Double Jump",
+            "Map",
+            "Moving Platforms",
+            "Drop-through Platforms",
+            "Speed Platforms",
+            "Start Match",
+            "Back",
+        ]
+        super().__init__(app, "Tag Settings", items)
+
+    def handle_select(self, index: int):
+        lobby = self.app.lobby
+        if index == 0:
+            lobby.tag_double_jump = not lobby.tag_double_jump
+        elif index == 1:
+            lobby.tag_map_index = (lobby.tag_map_index + 1) % 3
+        elif index == 2:
+            lobby.tag_enable_moving = not lobby.tag_enable_moving
+        elif index == 3:
+            lobby.tag_enable_dropthrough = not lobby.tag_enable_dropthrough
+        elif index == 4:
+            lobby.tag_enable_speed = not lobby.tag_enable_speed
+        elif index == 5:
+            # Start the Tag match with current settings
+            self.app.launch_tag_game(self.app.lobby.num_players)
+        elif index == 6:
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+
+    def draw(self, surface: pygame.Surface):
+        # Update labels to reflect current settings before drawing
+        lobby = self.app.lobby
+        self.items[0] = f"Double Jump: {'ON' if lobby.tag_double_jump else 'OFF'}"
+        self.items[1] = f"Map: {lobby.tag_map_index + 1}/3"
+        self.items[2] = f"Moving Platforms: {'ON' if lobby.tag_enable_moving else 'OFF'}"
+        self.items[3] = f"Drop-through Platforms: {'ON' if lobby.tag_enable_dropthrough else 'OFF'}"
+        self.items[4] = f"Speed Platforms: {'ON' if lobby.tag_enable_speed else 'OFF'}"
+        # Last two items are static
+        self.items[5] = "Start Match"
+        self.items[6] = "Back"
+        super().draw(surface)
 
 
 class MenuScene(Scene):
@@ -963,7 +1018,17 @@ class App:
             color = PLAYER_COLORS[i % len(PLAYER_COLORS)]
             players.append(HumanPlayer(i + 1, f"P{i+1}", rect, color, speed, True))
 
-        game = TagGame(players, bounds, match_time=60)
+        # Build Tag settings from lobby
+        lobby = self.lobby
+        settings = {
+            "double_jump": getattr(lobby, "tag_double_jump", False),
+            "map_index": getattr(lobby, "tag_map_index", 0),
+            "enable_moving": getattr(lobby, "tag_enable_moving", False),
+            "enable_dropthrough": getattr(lobby, "tag_enable_dropthrough", False),
+            "enable_speed": getattr(lobby, "tag_enable_speed", False),
+        }
+
+        game = TagGame(players, bounds, match_time=60, settings=settings)
         scene = GameScene(self, game)
         self._active_game_scene = scene
         self.current_game_launcher = lambda: self.launch_tag_game(num_players)
