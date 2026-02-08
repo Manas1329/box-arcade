@@ -161,37 +161,48 @@ class TagGame:
             for _ in range(num_plats):
                 min_width = max(80, self.bounds.width // 10)
                 max_width = max(min_width + 20, self.bounds.width // 6)
-                width = random.randint(min_width, max_width)
-                margin_x = 40
-                max_x = self.bounds.right - margin_x - width
-                min_x = self.bounds.left + margin_x
-                if max_x <= min_x:
-                    continue
-                x = random.randint(min_x, max_x)
-                rect = pygame.Rect(x, top, width, h)
 
-                # Choose platform kind based on toggles
-                kind = "normal"
-                move_speed = 0.0
-                if self.moving_enabled and random.random() < 0.25:
-                    kind = "moving"
-                    move_speed = random.uniform(70.0, 120.0)
-                elif self.dropthrough_enabled and random.random() < 0.25:
-                    kind = "drop"
-                elif self.speed_enabled and random.random() < 0.25:
-                    kind = "speed"
+                placed = False
+                # Try several times to find a non-overlapping x-position
+                for _attempt in range(8):
+                    width = random.randint(min_width, max_width)
+                    margin_x = 40
+                    max_x = self.bounds.right - margin_x - width
+                    min_x = self.bounds.left + margin_x
+                    if max_x <= min_x:
+                        break
+                    x = random.randint(min_x, max_x)
+                    rect = pygame.Rect(x, top, width, h)
 
-                # Moving platforms patrol horizontally within arena margins
-                if kind == "moving":
-                    patrol_margin = 40
-                    min_patrol_x = self.bounds.left + patrol_margin
-                    max_patrol_x = self.bounds.right - patrol_margin - width
-                    min_patrol_x = min(min_patrol_x, x)
-                    max_patrol_x = max(max_patrol_x, x)
-                    plat = Platform(rect, kind, move_speed, min_patrol_x, max_patrol_x)
-                else:
-                    plat = Platform(rect, kind)
-                self.platforms.append(plat)
+                    # Skip if this would overlap an existing platform
+                    if any(rect.colliderect(p.rect) for p in self.platforms):
+                        continue
+
+                    # Choose platform kind based on toggles
+                    kind = "normal"
+                    move_speed = 0.0
+                    if self.moving_enabled and random.random() < 0.25:
+                        kind = "moving"
+                        move_speed = random.uniform(70.0, 120.0)
+                    elif self.dropthrough_enabled and random.random() < 0.25:
+                        kind = "drop"
+                    elif self.speed_enabled and random.random() < 0.25:
+                        kind = "speed"
+
+                    # Moving platforms patrol horizontally within arena margins
+                    if kind == "moving":
+                        patrol_margin = 40
+                        min_patrol_x = self.bounds.left + patrol_margin
+                        max_patrol_x = self.bounds.right - patrol_margin - width
+                        min_patrol_x = min(min_patrol_x, x)
+                        max_patrol_x = max(max_patrol_x, x)
+                        plat = Platform(rect, kind, move_speed, min_patrol_x, max_patrol_x)
+                    else:
+                        plat = Platform(rect, kind)
+                    self.platforms.append(plat)
+                    placed = True
+                    break
+                # If we couldn't place without overlap after several tries, skip
 
     def reset(self):
         # Reset timers and IT state but keep the same world; regenerate
@@ -270,14 +281,13 @@ class TagGame:
             jump_pressed = input_handler.is_action_pressed(pid, "up", pressed)
             down_pressed = input_handler.is_action_pressed(pid, "down", pressed)
 
-            # Drop-through: if standing on a drop platform and pressing Down+Jump
+            # Drop-through: if standing on a drop platform and pressing Down
             grounded_index = self.grounded_on[i]
             if (
                 self.grounded[i]
                 and grounded_index is not None
                 and 0 <= grounded_index < len(self.platforms)
                 and self.platforms[grounded_index].kind == "drop"
-                and jump_pressed
                 and down_pressed
             ):
                 # Fall through this platform instead of jumping
