@@ -26,7 +26,8 @@ class TagGame:
         # Physics parameters
         self.gravity = 1400.0
         self.move_speed = 260.0
-        self.jump_speed = 650.0
+        # Slightly stronger jump to feel snappier in the taller arena
+        self.jump_speed = 700.0
         self.ground_height = 40
 
         # World geometry: ground + simple platform set
@@ -44,7 +45,10 @@ class TagGame:
         self.vel_x: List[float] = [0.0] * n
         self.vel_y: List[float] = [0.0] * n
         self.grounded: List[bool] = [False] * n
+        # For edge-triggered jumping
         self.last_jump_pressed: List[bool] = [False] * n
+        # Jump input buffer so quick taps slightly before landing still jump
+        self.jump_buffer: List[float] = [0.0] * n
 
         # Tag state and scoring
         self.current_it_id = random.choice(players).player_id if players else 1
@@ -74,32 +78,38 @@ class TagGame:
         if self.bounds.height < 160:
             return
 
-        # Vertical spacing tuned to be comfortably below maximum jump height
-        max_step = 160
         base_top = self.ground_rect.top
-        # Create 3-4 rows of platforms
+        # Approximate max jump height in pixels; keep steps below this
+        max_jump_height = (self.jump_speed * self.jump_speed) / (2 * self.gravity)
+        min_step = int(max_jump_height * 0.45)
+        max_step = int(max_jump_height * 0.75)
+        min_step = max(60, min_step)
+        max_step = max(min_step + 10, max_step)
+
         rows = 4
-        for i in range(rows):
-            top = base_top - (i + 1) * max_step
-            if top < self.bounds.top + 40:
+        cur_top = base_top
+        for _ in range(rows):
+            step = random.randint(min_step, max_step)
+            top = cur_top - step
+            if top < self.bounds.top + 80:
                 break
-            # Two platforms per row, left and right
-            margin_x = 80
-            plat_width = max(160, self.bounds.width // 5)
-            h = 22
-            left_plat = pygame.Rect(
-                self.bounds.left + margin_x,
-                top,
-                plat_width,
-                h,
-            )
-            right_plat = pygame.Rect(
-                self.bounds.right - margin_x - plat_width,
-                top,
-                plat_width,
-                h,
-            )
-            self.platforms.extend([left_plat, right_plat])
+            cur_top = top
+
+            # 2–3 platforms per row, with random widths and positions
+            num_plats = random.randint(2, 3)
+            h = 20
+            for _ in range(num_plats):
+                min_width = max(80, self.bounds.width // 10)
+                max_width = max(min_width + 20, self.bounds.width // 6)
+                width = random.randint(min_width, max_width)
+                margin_x = 40
+                max_x = self.bounds.right - margin_x - width
+                min_x = self.bounds.left + margin_x
+                if max_x <= min_x:
+                    continue
+                x = random.randint(min_x, max_x)
+                plat = pygame.Rect(x, top, width, h)
+                self.platforms.append(plat)
 
     def reset(self):
         # Reset timers and IT state but keep the same world; regenerate
@@ -115,6 +125,7 @@ class TagGame:
         self.vel_y = [0.0] * n
         self.grounded = [False] * n
         self.last_jump_pressed = [False] * n
+        self.jump_buffer = [0.0] * n
 
         # Spawn players roughly above the ground, spread horizontally
         if n:
@@ -151,12 +162,18 @@ class TagGame:
             dx, _ = input_handler.get_axes(pid, pressed)
             self.vel_x[i] = dx * self.move_speed
 
-            # Jump: use "up" action as jump key (edge-triggered)
+            # Jump: use "up" action as jump key (edge-triggered) with buffering
             jump_pressed = input_handler.is_action_pressed(pid, "up", pressed)
-            if jump_pressed and not self.last_jump_pressed[i] and self.grounded[i]:
+            if jump_pressed and not self.last_jump_pressed[i]:
+                # Store a small buffer so taps just before landing still trigger
+                self.jump_buffer[i] = 0.18
+            self.last_jump_pressed[i] = jump_pressed
+
+            # Consume jump buffer when grounded
+            if self.grounded[i] and self.jump_buffer[i] > 0.0:
                 self.vel_y[i] = -self.jump_speed
                 self.grounded[i] = False
-            self.last_jump_pressed[i] = jump_pressed
+                self.jump_buffer[i] = 0.0
 
             # Apply gravity
             self.vel_y[i] += self.gravity * dt
@@ -172,7 +189,9 @@ class TagGame:
             # Vertical integration with simple platform collisions
             old_bottom = p.rect.bottom
             p.rect.y += int(self.vel_y[i] * dt)
-            self.grounded[i] = False
+            # Not grounded until we resolve collisions this frame
+            if self.vel_y[i] > 0:
+                self.grounded[i] = False
 
             # Ceiling
             if p.rect.top < self.bounds.top:
@@ -200,6 +219,10 @@ class TagGame:
                     p.rect.bottom = plat.top
                     self.vel_y[i] = 0.0
                     self.grounded[i] = True
+
+            # Update jump buffer timer
+            if self.jump_buffer[i] > 0.0:
+                self.jump_buffer[i] = max(0.0, self.jump_buffer[i] - dt)
 
         # Collision detection & IT transfer (with brief invulnerability)
         it_player = next((x for x in self.players if x.player_id == self.current_it_id), None)

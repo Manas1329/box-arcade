@@ -955,7 +955,8 @@ class App:
         ]
         players: List[Player] = []
         speed = 220.0
-        size = 36
+        # Slightly smaller player boxes so arena feels larger
+        size = 28
         for i in range(num_players):
             x, y = spawn_positions[i % len(spawn_positions)]
             rect = pygame.Rect(x, y, size, size)
