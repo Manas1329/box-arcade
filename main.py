@@ -718,15 +718,116 @@ class ControlsScene(BaseMenuScene):
     def __init__(self, app: "App"):
         items = ["Back"]
         super().__init__(app, "Controls", items)
-        cfg_path = os.path.join(os.path.dirname(__file__), "keybindings.json")
+        self.cfg_path = os.path.join(os.path.dirname(__file__), "keybindings.json")
         try:
-            with open(cfg_path, "r", encoding="utf-8") as f:
+            with open(self.cfg_path, "r", encoding="utf-8") as f:
                 self.cfg = json.load(f)
         except Exception:
             self.cfg = {"players": {}}
 
+        players = self.cfg.get("players", {})
+        # Sorted list of player ID strings ("1", "2", ...)
+        self.player_ids = sorted(players.keys(), key=lambda x: int(x)) if players else []
+        # Editable actions per player
+        self.actions = ["up", "down", "left", "right"]
+        self.selected_player_index = 0
+        self.selected_action_index = 0
+        # When True, the next non-ESC key press becomes the new binding
+        self.waiting_for_key = False
+
     def handle_select(self, index: int):
+        # Only one menu item (Back); go home
         self.app.scene_manager.set(HomeScene(self.app))
+
+    def _keycode_to_binding_name(self, key: int) -> str:
+        """Convert a pygame keycode to a readable binding name for JSON.
+
+        Produces values that InputHandler._normalize_key_name understands.
+        """
+        # Letters: map to K_X style
+        try:
+            ch = chr(key)
+            if "a" <= ch <= "z" or "A" <= ch <= "Z":
+                return f"K_{ch.upper()}"
+        except Exception:
+            pass
+
+        # Arrow keys
+        if key == pygame.K_UP:
+            return "K_UP"
+        if key == pygame.K_DOWN:
+            return "K_DOWN"
+        if key == pygame.K_LEFT:
+            return "K_LEFT"
+        if key == pygame.K_RIGHT:
+            return "K_RIGHT"
+
+        # Numpad digits 0-9
+        if pygame.K_KP0 <= key <= pygame.K_KP9:
+            digit = key - pygame.K_KP0
+            return f"K_KP{digit}"
+
+        # Fallback to pygame key name (e.g., "space"), which
+        # InputHandler.from_file can resolve via pygame.key.key_code.
+        return pygame.key.name(key)
+
+    def handle_event(self, event: pygame.event.Event):
+        # Custom handling so this scene can edit keybindings.
+        if event.type == pygame.KEYDOWN:
+            # Cancel current rebind or leave controls screen
+            if event.key == pygame.K_ESCAPE:
+                if self.waiting_for_key:
+                    # Cancel rebind, stay in scene
+                    self.waiting_for_key = False
+                else:
+                    self.app.scene_manager.set(HomeScene(self.app))
+                return
+
+            # If we're waiting for a new key, capture it
+            if self.waiting_for_key and self.player_ids:
+                binding_name = self._keycode_to_binding_name(event.key)
+                pid = self.player_ids[self.selected_player_index]
+                players = self.cfg.setdefault("players", {})
+                actions_map = players.setdefault(pid, {})
+                action = self.actions[self.selected_action_index]
+                actions_map[action] = binding_name
+
+                # Persist to disk
+                try:
+                    with open(self.cfg_path, "w", encoding="utf-8") as f:
+                        json.dump(self.cfg, f, indent=2)
+                except Exception:
+                    pass
+
+                # Reload input handler so changes are live
+                try:
+                    self.app.input_handler = InputHandler.from_file(self.cfg_path)
+                except Exception:
+                    pass
+
+                self.waiting_for_key = False
+                return
+
+            # Navigation between players and actions when not rebinding
+            if not self.player_ids:
+                return
+            if event.key in (pygame.K_UP, pygame.K_w):
+                self.selected_player_index = (self.selected_player_index - 1) % len(self.player_ids)
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                self.selected_player_index = (self.selected_player_index + 1) % len(self.player_ids)
+            elif event.key in (pygame.K_LEFT, pygame.K_a):
+                self.selected_action_index = (self.selected_action_index - 1) % len(self.actions)
+            elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                self.selected_action_index = (self.selected_action_index + 1) % len(self.actions)
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                # Begin waiting for the next key press to assign
+                self.waiting_for_key = True
+
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # Allow clicking the Back button
+            rects, _, _, _, _ = self._layout()
+            if rects and rects[0].collidepoint(event.pos):
+                self.app.scene_manager.set(HomeScene(self.app))
 
     def draw(self, surface: pygame.Surface):
         super().draw(surface)
@@ -735,17 +836,52 @@ class ControlsScene(BaseMenuScene):
         box_w = 560
         box_h = 70
         gap = 12
+        # Ensure internal player_ids stays in sync if config changed
+        if players and not getattr(self, "player_ids", None):
+            self.player_ids = sorted(players.keys(), key=lambda x: int(x))
+
         for i, pid in enumerate(sorted(players.keys(), key=lambda x: int(x))):
             rect = pygame.Rect(WIDTH//2 - box_w//2, start_y + i*(box_h+gap), box_w, box_h)
-            pygame.draw.rect(surface, (60, 60, 80), rect)
-            pygame.draw.rect(surface, (150, 150, 190), rect, 2)
+            is_sel_player = (self.player_ids and pid == self.player_ids[self.selected_player_index])
+            fill_col = (80, 80, 110) if is_sel_player else (60, 60, 80)
+            border_col = (190, 190, 230) if is_sel_player else (150, 150, 190)
+            pygame.draw.rect(surface, fill_col, rect)
+            pygame.draw.rect(surface, border_col, rect, 2)
+
             color = PLAYER_COLORS[(int(pid)-1) % len(PLAYER_COLORS)]
             swatch = pygame.Rect(rect.left+10, rect.top+10, 40, 40)
             pygame.draw.rect(surface, color, swatch)
-            actions = players[pid]
-            text = f"P{pid}: up={actions.get('up','')} down={actions.get('down','')} left={actions.get('left','')} right={actions.get('right','')}"
+
+            actions = players.get(pid, {})
+            # Highlight the currently selected action for this player
+            def decorate(action_name: str, idx: int) -> str:
+                val = actions.get(action_name, "")
+                if is_sel_player and idx == self.selected_action_index:
+                    return f"[{val or 'UNSET'}]"
+                return val or ""
+
+            up_val = decorate("up", 0)
+            down_val = decorate("down", 1)
+            left_val = decorate("left", 2)
+            right_val = decorate("right", 3)
+
+            text = (
+                f"P{pid}: up={up_val} down={down_val} "
+                f"left={left_val} right={right_val}"
+            )
             surf = self.font.render(text, True, (220, 220, 230))
             surface.blit(surf, (swatch.right + 12, rect.centery - surf.get_height()//2))
+
+        # Instructions / status line
+        if getattr(self, "player_ids", None) and self.player_ids:
+            pid = self.player_ids[self.selected_player_index]
+            action = self.actions[self.selected_action_index]
+            if self.waiting_for_key:
+                msg = f"Press a key for P{pid} {action.upper()}  (ESC to cancel)"
+            else:
+                msg = "Arrows: select player/action   Enter: rebind   ESC: Back"
+            info = self.font.render(msg, True, (230, 230, 240))
+            surface.blit(info, (WIDTH//2 - info.get_width()//2, HEIGHT - 80))
 
 
 class PlayerSetupScene(BaseMenuScene):
