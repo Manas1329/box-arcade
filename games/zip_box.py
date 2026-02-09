@@ -13,18 +13,51 @@ class ZipBoxGame:
     def __init__(self, bounds: pygame.Rect):
         self.bounds = bounds
         # Levels: grid size and numbered node positions (index, x, y)
+        # Levels are ordered from easier to harder; later levels use
+        # larger grids and more numbered nodes to constrain the path.
         self.levels: List[dict] = [
+            # 5x5, simple corners layout
             {
                 "size": (5, 5),
                 "nodes": [(1, 0, 0), (2, 4, 0), (3, 4, 4), (4, 0, 4)],
             },
+            # 5x5, nodes closer to center
             {
                 "size": (5, 5),
                 "nodes": [(1, 2, 0), (2, 4, 2), (3, 2, 4), (4, 0, 2)],
             },
+            # 5x5, five nodes in a zig-zag pattern
+            {
+                "size": (5, 5),
+                "nodes": [(1, 0, 2), (2, 2, 0), (3, 4, 2), (4, 2, 4), (5, 0, 2)],
+            },
+            # 6x6, alternating sides
             {
                 "size": (6, 6),
-                "nodes": [(1, 0, 0), (2, 5, 1), (3, 0, 3), (4, 5, 4), (5, 2, 5)],
+                "nodes": [(1, 0, 1), (2, 5, 1), (3, 0, 3), (4, 5, 3), (5, 2, 5)],
+            },
+            # 6x6, more central
+            {
+                "size": (6, 6),
+                "nodes": [(1, 1, 0), (2, 4, 1), (3, 1, 3), (4, 4, 4), (5, 2, 5)],
+            },
+            # 7x7, perimeter walk
+            {
+                "size": (7, 7),
+                "nodes": [(1, 0, 0), (2, 6, 0), (3, 6, 6), (4, 0, 6), (5, 3, 3)],
+            },
+            # 7x7, many nodes constraining the middle
+            {
+                "size": (7, 7),
+                "nodes": [
+                    (1, 0, 3),
+                    (2, 2, 1),
+                    (3, 4, 1),
+                    (4, 6, 3),
+                    (5, 4, 5),
+                    (6, 2, 5),
+                    (7, 3, 3),
+                ],
             },
         ]
         self.current_level = 0
@@ -94,7 +127,12 @@ class ZipBoxGame:
         self.results_header = None
 
     def reset(self):
-        # Restart current level
+        """Restart the current level from scratch."""
+        self._load_level(self.current_level)
+
+    def next_level(self):
+        """Advance to the next level and load it."""
+        self.current_level = (self.current_level + 1) % len(self.levels)
         self._load_level(self.current_level)
 
     # ------------------------------------------------------------------

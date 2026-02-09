@@ -252,7 +252,8 @@ class ModeSelectScene(BaseMenuScene):
             self.app.scene_manager.set(SinglePlayerGameSelectScene(self.app))
         elif label.startswith("PvP"):
             self.app.lobby.mode = "pvp"
-            self.app.scene_manager.set(GameSelectScene(self.app))
+            # Use card-based selector for PvP games as well
+            self.app.scene_manager.set(PvpGameSelectScene(self.app))
 
 
 class GameSelectScene(BaseMenuScene):
@@ -286,6 +287,197 @@ class GameSelectScene(BaseMenuScene):
         elif mode == "pvp" and label.startswith("Tic Tac Toe"):
             self.app.lobby.game = "ttt_pvp"
             self.app.launch_ttt_pvp()
+
+
+class PvpGameSelectScene(Scene):
+    """Card-based selector for local PvP games.
+
+    Mirrors the single-player card layout but launches PvP modes.
+    """
+
+    def __init__(self, app: "App"):
+        self.app = app
+        self.font = app.font
+        self.big_font = app.big_font
+        self.card_font = pygame.font.SysFont("consolas", 18)
+
+        # Available PvP games with short descriptions.
+        self.cards: list[dict[str, Any]] = [
+            {"id": "tag", "title": "Tag (Boxes)", "desc": "Side-view tag arena.", "mode": "PvP"},
+            {"id": "survival_pvp", "title": "Survival (PvP)", "desc": "Last box standing wins.", "mode": "PvP"},
+            {"id": "control_zone", "title": "Control Zone", "desc": "Hold the zone to score.", "mode": "PvP"},
+            {"id": "trail_lock", "title": "TrailLock", "desc": "Box Tron-style trails.", "mode": "PvP"},
+            {"id": "ttt_pvp", "title": "Tic Tac Toe (PvP)", "desc": "Classic 2-player grid.", "mode": "PvP"},
+        ]
+
+        # Use two columns for consistency with single-player cards
+        self.cols = 2
+        self.selected_index = 0
+        self.card_rects: list[pygame.Rect] = []
+        self._build_layout()
+
+        if self.card_rects:
+            cx, cy = self.card_rects[0].center
+        else:
+            cx, cy = WIDTH // 2, HEIGHT // 2
+        self.highlight_center = [float(cx), float(cy)]
+
+    def _build_layout(self):
+        margin_x = 80
+        margin_top = 140
+        margin_bottom = 90
+        region = pygame.Rect(margin_x, margin_top,
+                             WIDTH - 2 * margin_x,
+                             HEIGHT - margin_top - margin_bottom)
+        gap_x = 22
+        gap_y = 22
+        card_w = (region.width - gap_x * (self.cols - 1)) // self.cols
+        rows = (len(self.cards) + self.cols - 1) // self.cols
+        card_h = (region.height - gap_y * (rows - 1)) // max(1, rows)
+        self.card_rects.clear()
+        for i, _ in enumerate(self.cards):
+            row = i // self.cols
+            col = i % self.cols
+            x = region.left + col * (card_w + gap_x)
+            y = region.top + row * (card_h + gap_y)
+            self.card_rects.append(pygame.Rect(x, y, card_w, card_h))
+
+    def _fit_text(self, text: str, max_width: int) -> str:
+        if not text:
+            return text
+        surf = self.card_font.render(text, True, (0, 0, 0))
+        if surf.get_width() <= max_width:
+            return text
+        ellipsis = "..."
+        trimmed = text
+        while trimmed and self.card_font.render(trimmed + ellipsis, True, (0, 0, 0)).get_width() > max_width:
+            trimmed = trimmed[:-1]
+        return trimmed + ellipsis if trimmed else ellipsis
+
+    def handle_event(self, event: pygame.event.Event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.app.scene_manager.set(ModeSelectScene(self.app))
+                return
+            if not self.card_rects:
+                return
+            cols = self.cols
+            idx = self.selected_index
+            row = idx // cols
+            col = idx % cols
+            if event.key in (pygame.K_LEFT, pygame.K_a):
+                if col > 0:
+                    idx -= 1
+            elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                if col < cols - 1 and idx + 1 < len(self.cards):
+                    idx += 1
+            elif event.key in (pygame.K_UP, pygame.K_w):
+                if row > 0:
+                    idx -= cols
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                if idx + cols < len(self.cards):
+                    idx += cols
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                self._activate(self.selected_index)
+            self.selected_index = max(0, min(idx, len(self.cards) - 1))
+        elif event.type == pygame.MOUSEMOTION:
+            mx, my = event.pos
+            for i, r in enumerate(self.card_rects):
+                if r.collidepoint(mx, my):
+                    self.selected_index = i
+                    break
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            for i, r in enumerate(self.card_rects):
+                if r.collidepoint(mx, my):
+                    self.selected_index = i
+                    self._activate(i)
+                    break
+        elif event.type == pygame.MOUSEWHEEL:
+            if not self.card_rects:
+                return
+            cols = self.cols
+            idx = self.selected_index
+            if event.y > 0 and idx - cols >= 0:
+                idx -= cols
+            elif event.y < 0 and idx + cols < len(self.cards):
+                idx += cols
+            self.selected_index = idx
+
+    def _activate(self, index: int):
+        if index < 0 or index >= len(self.cards):
+            return
+        cid = self.cards[index]["id"]
+        self.app.lobby.mode = "pvp"
+        if cid == "tag":
+            self.app.lobby.game = "tag"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+        elif cid == "survival_pvp":
+            self.app.lobby.game = "survival_pvp"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+        elif cid == "control_zone":
+            self.app.lobby.game = "control_zone"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+        elif cid == "trail_lock":
+            self.app.lobby.game = "trail_lock"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+        elif cid == "ttt_pvp":
+            self.app.lobby.game = "ttt_pvp"
+            self.app.launch_ttt_pvp()
+
+    def update(self, dt: float):
+        if not self.card_rects or self.selected_index >= len(self.card_rects):
+            return
+        target = self.card_rects[self.selected_index].center
+        speed = 12.0
+        for i in (0, 1):
+            delta = target[i] - self.highlight_center[i]
+            self.highlight_center[i] += delta * min(1.0, speed * dt)
+
+    def draw(self, surface: pygame.Surface):
+        surface.fill(BG_COLOR)
+        title = self.big_font.render("PvP (Local)", True, (255, 255, 255))
+        title_y = 80
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, title_y))
+
+        hint = self.font.render("Arrows/Mouse: Select  Enter/Click: Start  Esc: Back", True, (180, 180, 180))
+        hint_y = HEIGHT - 50
+        surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, hint_y))
+
+        base_col = (50, 50, 80)
+        hover_col = (90, 90, 140)
+        outline_col = (180, 180, 230)
+
+        for i, (card, rect) in enumerate(zip(self.cards, self.card_rects)):
+            is_sel = (i == self.selected_index)
+            fill = hover_col if is_sel else base_col
+            pygame.draw.rect(surface, fill, rect)
+            pygame.draw.rect(surface, outline_col, rect, 2)
+
+            max_text_w = rect.width - 24
+            title_text = self._fit_text(card["title"], max_text_w)
+            desc_text = self._fit_text(card["desc"], max_text_w)
+
+            t_surf = self.card_font.render(title_text, True, (240, 240, 240))
+            d_surf = self.card_font.render(desc_text, True, (210, 210, 220))
+
+            total_text_h = t_surf.get_height() + 6 + d_surf.get_height()
+            start_y = rect.centery - total_text_h // 2
+
+            t_x = rect.centerx - t_surf.get_width() // 2
+            t_y = start_y
+            surface.blit(t_surf, (t_x, t_y))
+
+            d_x = rect.centerx - d_surf.get_width() // 2
+            d_y = start_y + t_surf.get_height() + 6
+            surface.blit(d_surf, (d_x, d_y))
+
+        if self.card_rects:
+            hw = self.card_rects[0].width + 16
+            hh = self.card_rects[0].height + 16
+            frame = pygame.Rect(0, 0, hw, hh)
+            frame.center = (int(self.highlight_center[0]), int(self.highlight_center[1]))
+            pygame.draw.rect(surface, (230, 230, 255), frame, 3)
 
 
 class SinglePlayerGameSelectScene(Scene):
@@ -1100,13 +1292,39 @@ class App:
         self.scene_manager.set(scene)
 
     def launch_zip_box_game(self):
-        # Central board area for the numbered-grid puzzle
+        # Central board area for the numbered-grid puzzle.
+        # For Zip Box we keep a single game instance and reuse it so
+        # that "Play Again" can advance to the next level while
+        # pause-menu "Restart" restarts the current level.
         bounds = pygame.Rect(60, 60, WIDTH - 120, HEIGHT - 120)
         game = ZipBoxGame(bounds)
-        game.reset()
         scene = GameScene(self, game)
         self._active_game_scene = scene
-        self.current_game_launcher = self.launch_zip_box_game
+        # Launcher decides whether to restart or go to next level based
+        # on which scene is currently active (Pause vs Results).
+        self.current_game_launcher = lambda g=game: self._restart_or_advance_zip_box(g)
+        self.scene_manager.set(scene)
+
+    def _restart_or_advance_zip_box(self, game: ZipBoxGame):
+        """Helper used by current_game_launcher for Zip Box.
+
+        - From ResultsScene → advance to next level.
+        - From PauseScene (Restart) → restart current level.
+        """
+        from_typescene = self.scene_manager.current
+        # If we're on the results screen, move to the next puzzle.
+        if isinstance(from_typescene, ResultsScene):
+            if hasattr(game, "next_level"):
+                game.next_level()
+            else:
+                game.current_level = (game.current_level + 1) % len(game.levels)
+                game.reset()
+        else:
+            # From pause or other callers, just restart this level.
+            game.reset()
+
+        scene = GameScene(self, game)
+        self._active_game_scene = scene
         self.scene_manager.set(scene)
 
     def launch_box_stack_game(self):
