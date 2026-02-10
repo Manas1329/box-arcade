@@ -310,7 +310,7 @@ class PvpGameSelectScene(Scene):
             {"id": "ttt_pvp", "title": "Tic Tac Toe (PvP)", "desc": "Classic 2-player grid.", "mode": "PvP"},
         ]
 
-        # Use two columns for consistency with single-player cards
+        # Use two columns and center the grid within the view
         self.cols = 2
         self.selected_index = 0
         self.card_rects: list[pygame.Rect] = []
@@ -323,23 +323,38 @@ class PvpGameSelectScene(Scene):
         self.highlight_center = [float(cx), float(cy)]
 
     def _build_layout(self):
+        # Grid region between title and footer
         margin_x = 80
         margin_top = 140
         margin_bottom = 90
-        region = pygame.Rect(margin_x, margin_top,
-                             WIDTH - 2 * margin_x,
-                             HEIGHT - margin_top - margin_bottom)
+        region = pygame.Rect(
+            margin_x,
+            margin_top,
+            WIDTH - 2 * margin_x,
+            HEIGHT - margin_top - margin_bottom,
+        )
         gap_x = 22
         gap_y = 22
-        card_w = (region.width - gap_x * (self.cols - 1)) // self.cols
+
         rows = (len(self.cards) + self.cols - 1) // self.cols
-        card_h = (region.height - gap_y * (rows - 1)) // max(1, rows)
+        if rows <= 0:
+            self.card_rects = []
+            return
+
+        card_w = (region.width - gap_x * (self.cols - 1)) // self.cols
+        card_h = (region.height - gap_y * (rows - 1)) // rows
+
+        total_w = self.cols * card_w + (self.cols - 1) * gap_x
+        total_h = rows * card_h + (rows - 1) * gap_y
+        offset_x = region.left + (region.width - total_w) // 2
+        offset_y = region.top + (region.height - total_h) // 2
+
         self.card_rects.clear()
         for i, _ in enumerate(self.cards):
             row = i // self.cols
             col = i % self.cols
-            x = region.left + col * (card_w + gap_x)
-            y = region.top + row * (card_h + gap_y)
+            x = offset_x + col * (card_w + gap_x)
+            y = offset_y + row * (card_h + gap_y)
             self.card_rects.append(pygame.Rect(x, y, card_w, card_h))
 
     def _fit_text(self, text: str, max_width: int) -> str:
@@ -572,9 +587,8 @@ class SinglePlayerGameSelectScene(Scene):
             {"id": "zip_box", "title": "Zip Box", "desc": "Connect numbers with paths.", "mode": "Singleplayer"},
         ]
 
-        # Use two columns so each card has more horizontal space
-        # for its title and description text.
-        self.cols = 2
+        # Use three columns so the 12 games form a 3x4 grid.
+        self.cols = 3
         self.selected_index = 0
         self.card_rects: list[pygame.Rect] = []
         self._build_layout()
@@ -587,24 +601,38 @@ class SinglePlayerGameSelectScene(Scene):
         self.highlight_center = [float(cx), float(cy)]
 
     def _build_layout(self):
-        # Define a grid region under the title and above the footer.
+        # Grid region under the title and above the footer.
         margin_x = 80
         margin_top = 140
         margin_bottom = 90
-        region = pygame.Rect(margin_x, margin_top,
-                             WIDTH - 2 * margin_x,
-                             HEIGHT - margin_top - margin_bottom)
+        region = pygame.Rect(
+            margin_x,
+            margin_top,
+            WIDTH - 2 * margin_x,
+            HEIGHT - margin_top - margin_bottom,
+        )
         gap_x = 22
         gap_y = 22
-        card_w = (region.width - gap_x * (self.cols - 1)) // self.cols
+
         rows = (len(self.cards) + self.cols - 1) // self.cols
-        card_h = (region.height - gap_y * (rows - 1)) // max(1, rows)
+        if rows <= 0:
+            self.card_rects = []
+            return
+
+        card_w = (region.width - gap_x * (self.cols - 1)) // self.cols
+        card_h = (region.height - gap_y * (rows - 1)) // rows
+
+        total_w = self.cols * card_w + (self.cols - 1) * gap_x
+        total_h = rows * card_h + (rows - 1) * gap_y
+        offset_x = region.left + (region.width - total_w) // 2
+        offset_y = region.top + (region.height - total_h) // 2
+
         self.card_rects.clear()
         for i, _ in enumerate(self.cards):
             row = i // self.cols
             col = i % self.cols
-            x = region.left + col * (card_w + gap_x)
-            y = region.top + row * (card_h + gap_y)
+            x = offset_x + col * (card_w + gap_x)
+            y = offset_y + row * (card_h + gap_y)
             self.card_rects.append(pygame.Rect(x, y, card_w, card_h))
 
     def _fit_text(self, text: str, max_width: int) -> str:
