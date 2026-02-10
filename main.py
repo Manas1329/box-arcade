@@ -407,23 +407,9 @@ class PvpGameSelectScene(Scene):
     def _activate(self, index: int):
         if index < 0 or index >= len(self.cards):
             return
-        cid = self.cards[index]["id"]
-        self.app.lobby.mode = "pvp"
-        if cid == "tag":
-            self.app.lobby.game = "tag"
-            self.app.scene_manager.set(PlayerSetupScene(self.app))
-        elif cid == "survival_pvp":
-            self.app.lobby.game = "survival_pvp"
-            self.app.scene_manager.set(PlayerSetupScene(self.app))
-        elif cid == "control_zone":
-            self.app.lobby.game = "control_zone"
-            self.app.scene_manager.set(PlayerSetupScene(self.app))
-        elif cid == "trail_lock":
-            self.app.lobby.game = "trail_lock"
-            self.app.scene_manager.set(PlayerSetupScene(self.app))
-        elif cid == "ttt_pvp":
-            self.app.lobby.game = "ttt_pvp"
-            self.app.launch_ttt_pvp()
+        card = self.cards[index]
+        # Step 2: go to PvP game detail page
+        self.app.scene_manager.set(PvpGameDetailScene(self.app, card))
 
     def update(self, dt: float):
         if not self.card_rects or self.selected_index >= len(self.card_rects):
@@ -453,24 +439,13 @@ class PvpGameSelectScene(Scene):
             fill = hover_col if is_sel else base_col
             pygame.draw.rect(surface, fill, rect)
             pygame.draw.rect(surface, outline_col, rect, 2)
-
+            # Compact card: only render game title centered in the box
             max_text_w = rect.width - 24
             title_text = self._fit_text(card["title"], max_text_w)
-            desc_text = self._fit_text(card["desc"], max_text_w)
-
             t_surf = self.card_font.render(title_text, True, (240, 240, 240))
-            d_surf = self.card_font.render(desc_text, True, (210, 210, 220))
-
-            total_text_h = t_surf.get_height() + 6 + d_surf.get_height()
-            start_y = rect.centery - total_text_h // 2
-
             t_x = rect.centerx - t_surf.get_width() // 2
-            t_y = start_y
+            t_y = rect.centery - t_surf.get_height() // 2
             surface.blit(t_surf, (t_x, t_y))
-
-            d_x = rect.centerx - d_surf.get_width() // 2
-            d_y = start_y + t_surf.get_height() + 6
-            surface.blit(d_surf, (d_x, d_y))
 
         if self.card_rects:
             hw = self.card_rects[0].width + 16
@@ -478,6 +453,92 @@ class PvpGameSelectScene(Scene):
             frame = pygame.Rect(0, 0, hw, hh)
             frame.center = (int(self.highlight_center[0]), int(self.highlight_center[1]))
             pygame.draw.rect(surface, (230, 230, 255), frame, 3)
+
+
+class PvpGameDetailScene(BaseMenuScene):
+    """Step 2: detail page for a PvP game.
+
+    Shows title, description, per-player controls, and Start/Back.
+    """
+
+    def __init__(self, app: "App", card: dict[str, Any]):
+        items = ["Start", "Back"]
+        super().__init__(app, "PvP — Game", items)
+        self.card = card
+
+    def _load_bindings(self) -> dict:
+        cfg_path = os.path.join(os.path.dirname(__file__), "keybindings.json")
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"players": {}}
+
+    def handle_select(self, index: int):
+        label = self.items[index]
+        if label == "Start":
+            self._start_game()
+        elif label == "Back":
+            # Return to the PvP grid
+            self.app.scene_manager.set(PvpGameSelectScene(self.app))
+
+    def _start_game(self):
+        cid = self.card.get("id", "")
+        self.app.lobby.mode = "pvp"
+        if cid == "tag":
+            self.app.lobby.game = "tag"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+        elif cid == "survival_pvp":
+            self.app.lobby.game = "survival_pvp"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+        elif cid == "control_zone":
+            self.app.lobby.game = "control_zone"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+        elif cid == "trail_lock":
+            self.app.lobby.game = "trail_lock"
+            self.app.scene_manager.set(PlayerSetupScene(self.app))
+        elif cid == "ttt_pvp":
+            self.app.lobby.game = "ttt_pvp"
+            self.app.launch_ttt_pvp()
+
+    def draw(self, surface: pygame.Surface):
+        # Base menu draws title, Start/Back, and hint
+        super().draw(surface)
+
+        # Info panel box
+        panel_w = WIDTH - 200
+        panel_h = 300
+        panel_rect = pygame.Rect(0, 0, panel_w, panel_h)
+        panel_rect.center = (WIDTH // 2, HEIGHT // 2)
+        pygame.draw.rect(surface, (40, 40, 70), panel_rect)
+        pygame.draw.rect(surface, (160, 160, 210), panel_rect, 2)
+
+        title_text = self.card.get("title", "")
+        desc_text = self.card.get("desc", "")
+
+        y = panel_rect.top + 20
+        title_surf = self.big_font.render(title_text, True, (245, 245, 255))
+        surface.blit(title_surf, (panel_rect.centerx - title_surf.get_width() // 2, y))
+        y += title_surf.get_height() + 12
+
+        if desc_text:
+            desc_surf = self.font.render(desc_text, True, (225, 225, 235))
+            surface.blit(desc_surf, (panel_rect.centerx - desc_surf.get_width() // 2, y))
+            y += desc_surf.get_height() + 18
+
+        # Controls: show up to 4 players' bindings
+        cfg = self._load_bindings()
+        players = cfg.get("players", {})
+        for pnum in range(1, 5):
+            pid = str(pnum)
+            actions = players.get(pid, {})
+            line = (
+                f"P{pid}: up={actions.get('up','')} down={actions.get('down','')} "
+                f"left={actions.get('left','')} right={actions.get('right','')}"
+            )
+            ctrl_surf = self.font.render(line, True, (210, 210, 230))
+            surface.blit(ctrl_surf, (panel_rect.left + 40, y))
+            y += ctrl_surf.get_height() + 4
 
 
 class SinglePlayerGameSelectScene(Scene):
@@ -613,10 +674,98 @@ class SinglePlayerGameSelectScene(Scene):
     def _activate(self, index: int):
         if index < 0 or index >= len(self.cards):
             return
-        cid = self.cards[index]["id"]
+        card = self.cards[index]
+        # Step 2: go to single-player game detail page
+        self.app.scene_manager.set(SinglePlayerGameDetailScene(self.app, card))
+
+    def update(self, dt: float):
+        # Smoothly move highlight frame toward the selected card.
+        if not self.card_rects or self.selected_index >= len(self.card_rects):
+            return
+        target = self.card_rects[self.selected_index].center
+        speed = 12.0
+        for i in (0, 1):
+            delta = target[i] - self.highlight_center[i]
+            self.highlight_center[i] += delta * min(1.0, speed * dt)
+
+    def draw(self, surface: pygame.Surface):
+        surface.fill(BG_COLOR)
+        # Title
+        title = self.big_font.render("Single Player", True, (255, 255, 255))
+        title_y = 80
+        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, title_y))
+
+        # Footer hint
+        hint = self.font.render("Arrows/Mouse: Select  Enter/Click: Start  Esc: Back", True, (180, 180, 180))
+        hint_y = HEIGHT - 50
+        surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, hint_y))
+
+        # Draw cards
+        base_col = (50, 50, 80)
+        hover_col = (90, 90, 140)
+        outline_col = (180, 180, 230)
+
+        for i, (card, rect) in enumerate(zip(self.cards, self.card_rects)):
+            is_sel = (i == self.selected_index)
+            fill = hover_col if is_sel else base_col
+            pygame.draw.rect(surface, fill, rect)
+            pygame.draw.rect(surface, outline_col, rect, 2)
+            # Compact card: only render game title centered in the box
+            max_text_w = rect.width - 24  # horizontal padding
+            title_text = self._fit_text(card["title"], max_text_w)
+            t_surf = self.card_font.render(title_text, True, (240, 240, 240))
+            t_x = rect.centerx - t_surf.get_width() // 2
+            t_y = rect.centery - t_surf.get_height() // 2
+            surface.blit(t_surf, (t_x, t_y))
+
+        # Highlight frame with smooth movement
+        if self.card_rects:
+            hw = self.card_rects[0].width + 16
+            hh = self.card_rects[0].height + 16
+            frame = pygame.Rect(0, 0, hw, hh)
+            frame.center = (int(self.highlight_center[0]), int(self.highlight_center[1]))
+            pygame.draw.rect(surface, (230, 230, 255), frame, 3)
+
+
+class SinglePlayerGameDetailScene(BaseMenuScene):
+    """Step 2: detail page for a single-player game.
+
+    Shows title, description, controls, and Start/Back buttons.
+    """
+
+    def __init__(self, app: "App", card: dict[str, Any]):
+        items = ["Start", "Back"]
+        super().__init__(app, "Single Player — Game", items)
+        self.card = card
+
+    def _load_bindings(self) -> dict:
+        cfg_path = os.path.join(os.path.dirname(__file__), "keybindings.json")
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"players": {}}
+
+    def handle_select(self, index: int):
+        label = self.items[index]
+        if label == "Start":
+            self._start_game()
+        elif label == "Back":
+            # Return to the single-player grid
+            self.app.scene_manager.set(SinglePlayerGameSelectScene(self.app))
+
+    def _start_game(self):
+        cid = self.card.get("id", "")
+        self.app.lobby.mode = "single"
         if cid == "snake":
             self.app.lobby.game = "snake"
             self.app.launch_snake_game()
+        elif cid == "control_zone":
+            self.app.lobby.game = "control_zone"
+            self.app.launch_control_zone_game(1)
+        elif cid == "trail_lock":
+            self.app.lobby.game = "trail_lock"
+            self.app.launch_trail_lock_game(1)
         elif cid == "brick_breaker":
             self.app.lobby.game = "brick_breaker"
             self.app.launch_brick_breaker_game()
@@ -651,67 +800,42 @@ class SinglePlayerGameSelectScene(Scene):
             self.app.lobby.game = "zip_box"
             self.app.launch_zip_box_game()
 
-    def update(self, dt: float):
-        # Smoothly move highlight frame toward the selected card.
-        if not self.card_rects or self.selected_index >= len(self.card_rects):
-            return
-        target = self.card_rects[self.selected_index].center
-        speed = 12.0
-        for i in (0, 1):
-            delta = target[i] - self.highlight_center[i]
-            self.highlight_center[i] += delta * min(1.0, speed * dt)
-
     def draw(self, surface: pygame.Surface):
-        surface.fill(BG_COLOR)
-        # Title
-        title = self.big_font.render("Single Player", True, (255, 255, 255))
-        title_y = 80
-        surface.blit(title, (WIDTH // 2 - title.get_width() // 2, title_y))
+        # Use BaseMenuScene to draw the title, Start/Back buttons, and hints
+        super().draw(surface)
 
-        # Footer hint
-        hint = self.font.render("Arrows/Mouse: Select  Enter/Click: Start  Esc: Back", True, (180, 180, 180))
-        hint_y = HEIGHT - 50
-        surface.blit(hint, (WIDTH // 2 - hint.get_width() // 2, hint_y))
+        # Info panel box
+        panel_w = WIDTH - 200
+        panel_h = 260
+        panel_rect = pygame.Rect(0, 0, panel_w, panel_h)
+        panel_rect.center = (WIDTH // 2, HEIGHT // 2)
+        pygame.draw.rect(surface, (40, 40, 70), panel_rect)
+        pygame.draw.rect(surface, (160, 160, 210), panel_rect, 2)
 
-        # Draw cards
-        base_col = (50, 50, 80)
-        hover_col = (90, 90, 140)
-        outline_col = (180, 180, 230)
+        title_text = self.card.get("title", "")
+        desc_text = self.card.get("desc", "")
 
-        for i, (card, rect) in enumerate(zip(self.cards, self.card_rects)):
-            is_sel = (i == self.selected_index)
-            fill = hover_col if is_sel else base_col
-            pygame.draw.rect(surface, fill, rect)
-            pygame.draw.rect(surface, outline_col, rect, 2)
+        y = panel_rect.top + 20
+        title_surf = self.big_font.render(title_text, True, (245, 245, 255))
+        surface.blit(title_surf, (panel_rect.centerx - title_surf.get_width() // 2, y))
+        y += title_surf.get_height() + 12
 
-            # Center title and description text vertically/horizontally in the card
-            max_text_w = rect.width - 24  # horizontal padding
-            title_text = self._fit_text(card["title"], max_text_w)
-            desc_text = self._fit_text(card["desc"], max_text_w)
+        if desc_text:
+            desc_surf = self.font.render(desc_text, True, (225, 225, 235))
+            surface.blit(desc_surf, (panel_rect.centerx - desc_surf.get_width() // 2, y))
+            y += desc_surf.get_height() + 18
 
-            t_surf = self.card_font.render(title_text, True, (240, 240, 240))
-            d_surf = self.card_font.render(desc_text, True, (210, 210, 220))
+        # Controls (single-player: show P1 only)
+        cfg = self._load_bindings()
+        players = cfg.get("players", {})
+        p1 = players.get("1", {})
+        ctrl_line = (
+            f"P1 Controls: up={p1.get('up','')} down={p1.get('down','')} "
+            f"left={p1.get('left','')} right={p1.get('right','')}"
+        )
+        ctrl_surf = self.font.render(ctrl_line, True, (210, 210, 230))
+        surface.blit(ctrl_surf, (panel_rect.centerx - ctrl_surf.get_width() // 2, y))
 
-            total_text_h = t_surf.get_height() + 6 + d_surf.get_height()
-            start_y = rect.centery - total_text_h // 2
-
-            # Title centered
-            t_x = rect.centerx - t_surf.get_width() // 2
-            t_y = start_y
-            surface.blit(t_surf, (t_x, t_y))
-
-            # Description centered under title
-            d_x = rect.centerx - d_surf.get_width() // 2
-            d_y = start_y + t_surf.get_height() + 6
-            surface.blit(d_surf, (d_x, d_y))
-
-        # Highlight frame with smooth movement
-        if self.card_rects:
-            hw = self.card_rects[0].width + 16
-            hh = self.card_rects[0].height + 16
-            frame = pygame.Rect(0, 0, hw, hh)
-            frame.center = (int(self.highlight_center[0]), int(self.highlight_center[1]))
-            pygame.draw.rect(surface, (230, 230, 255), frame, 3)
 
 
 class ControlsScene(BaseMenuScene):
